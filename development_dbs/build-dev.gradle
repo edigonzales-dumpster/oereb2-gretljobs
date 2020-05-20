@@ -39,7 +39,7 @@ ext {
 // Cannot use GRETL for ili2pgImportSchema since not all v4 options
 // are exposed. 
 task createSchemaLandUsePlans(type: SqlExecutor){
-    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    database = [dbUriEdit, "admin", "admin"]
     sqlFiles = ['arp_npl.sql', 'arp_npl_grants.sql']
 }
 
@@ -130,7 +130,6 @@ task replaceDataStaticForestPerimeters(type: Ili2pgImport, dependsOn: "downloadD
     deleteData = true
     disableValidation = true
 }
-
 
 task downloadFederalLegalBasis(type: Download) {
     description = "Download Bundesgesetze ($federalLegalBaseDataSet)."

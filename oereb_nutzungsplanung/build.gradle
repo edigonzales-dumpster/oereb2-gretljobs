@@ -1,0 +1,222 @@
+apply plugin: "de.undercouch.download"
+//apply plugin: "jp.classmethod.aws.s3"
+apply plugin: "ch.so.agi.gretl"
+
+import ch.so.agi.gretl.api.TransferSet
+import ch.so.agi.gretl.tasks.*
+import java.nio.file.Paths
+import de.undercouch.gradle.tasks.download.Download
+//import com.amazonaws.services.s3.model.ObjectMetadata
+//import jp.classmethod.aws.gradle.s3.AmazonS3FileUploadTask
+
+ext {
+    pathToTempFolder = System.getProperty("java.io.tmpdir")
+
+    awsBucketName = "ch.so.agi.oereb-data-dev"
+
+    iliModelVorschriften = "OeREBKRMvs_V1_1"
+    iliModelTransferstruktur = "OeREBKRMtrsfr_V1_1"
+
+    symbolsWmsBaseUrl = "https://" + geoservicesHostName
+    xtfFileName = "ch.so.arp.nutzungsplanung.oereb.xtf"
+
+    dbSchemaLandUsePlansOereb = "arp_npl_oereb"
+    landUsePlansDataSet = "ch.so.arp.nutzungsplanung"
+
+    federalLegalBasisBaseUrl = "http://models.geo.admin.ch/V_D/OeREB/"
+    federalLegalBaseDataSet = "OeREBKRM_V1_1_Gesetze_20180501"
+
+    cantonalLegalBasisBaseUrl = "https://geo.so.ch/geodata/ch.so.sk.gesetze.oereb/"
+    cantonalLegalBaseDataSet = "ch.so.sk.gesetze"
+
+    responsibleOfficesBaseUrl = "https://geo.so.ch/geodata/ch.so.agi.zustaendigestellen.oereb/"
+    responsibleOfficesDataSet = "ch.so.agi.zustaendigestellen"
+
+    // Hier müssen korrekterweise die Einzellayer der WMS-Layergroup stehen.
+    wmsLayerList = [
+        ["ch.SO.Laermemfindlichkeitsstufen", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Flaechenobjekt"],
+        ["ch.SO.NutzungsplanungGrundnutzung", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Grundnutzung"],
+        ["ch.SO.NutzungsplanungUeberlagernd.Flaeche", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Flaeche"],
+        ["ch.SO.NutzungsplanungUeberlagernd.Linie", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Linie"], 
+        ["ch.SO.NutzungsplanungUeberlagernd.Punkt", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Punkt"],
+        ["ch.SO.Baulinien", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Linienobjekt"],
+        ["ch.SO.NutzungsplanungSondernutzungsplaene", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Flaeche"],
+        ["ch.SO.Waldabstandslinien", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Linienobjekt"]
+    ]    
+}
+
+/*
+aws {
+	profileName = "default"
+	region = "eu-central-1"
+}
+*/
+
+task downloadFederalLegalBasis(type: Download, dependsOn: 'deleteFromOereb') {
+    description = "Download Bundesgesetze ($federalLegalBaseDataSet)."
+    src federalLegalBasisBaseUrl + federalLegalBaseDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+task importFederalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadFederalLegalBasis') {
+    description = "Import Bundesgesetze ($federalLegalBaseDataSet)."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelVorschriften
+    dbschema = dbSchemaLandUsePlansOereb
+    dataFile = file(Paths.get(pathToTempFolder.toString(), federalLegalBaseDataSet + ".xml"))
+    dataset = "ch.admin.bk.gesetze" 
+    disableValidation = true
+}
+
+task downloadCantonalLegalBasis(type: Download, dependsOn: 'deleteFromOereb') {
+    description = "Download kantonale Gesetze ($cantonalLegalBaseDataSet)."
+    src cantonalLegalBasisBaseUrl + cantonalLegalBaseDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true    
+}
+
+task importCantonalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalLegalBasis') {
+    description = "Import kantonale Gesetze ($cantonalLegalBaseDataSet)."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelVorschriften
+    dbschema = dbSchemaLandUsePlansOereb
+    dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalLegalBaseDataSet + ".xtf"))
+    dataset = cantonalLegalBaseDataSet 
+    disableValidation = true
+}
+
+task downloadResponsibleOffices(type: Download, dependsOn: 'deleteFromOereb') {
+    description = "Download zuständige Stellen ($responsibleOfficesDataSet)."
+    src responsibleOfficesBaseUrl + responsibleOfficesDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true       
+}
+
+task importResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'downloadResponsibleOffices') {
+    description = "Import zuständige Stellen ($responsibleOfficesDataSet)."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelTransferstruktur
+    dbschema = dbSchemaLandUsePlansOereb
+    dataFile = file(Paths.get(pathToTempFolder.toString(), responsibleOfficesDataSet + ".xtf"))
+    dataset = landUsePlansDataSet
+    disableValidation = true
+}
+
+task deleteFromOereb(type: SqlExecutor) {
+    description = "Löscht die Daten aus dem Transferschema."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    sqlFiles = ["delete_oereb_landuseplans_tables.sql"]
+}
+
+task transferData(type: SqlExecutor, dependsOn: ["importFederalLegalBasisToOereb", "importCantonalLegalBasisToOereb", "importResponsibleOfficesToOereb"]) {
+    description = "Führt den Datenumbau in das Transferschema durch."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    sqlFiles = ["insert_oereb_landuseplans_tables.sql"]
+}
+
+wmsLayerList.each { wmsLayer ->
+    def wmsLayerName = wmsLayer.getAt(0)
+    def typeCodeList = wmsLayer.getAt(1)
+    task "updateSymbols_$wmsLayerName"(type: OerebIconizerQgis3) {
+        description = "Erzeugt die Symbole für die einzelnen Legendeneinträge für $wmsLayerName."
+        sldUrl = "$symbolsWmsBaseUrl/wms/oereb-symbols?&SERVICE=WMS&REQUEST=GetStyles&LAYERS=$wmsLayerName&SLD_VERSION=1.1.0"
+        legendGraphicUrl = "$symbolsWmsBaseUrl/wms/oereb-symbols?SERVICE=WMS&REQUEST=GetLegendGraphic&LAYER=$wmsLayerName&FORMAT=image/png&RULELABEL=false&LAYERTITLE=false&HEIGHT=35&WIDTH=70&SYMBOLHEIGHT=3&SYMBOLWIDTH=6&DPI=300"
+        database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+        dbQTable = "arp_npl_oereb.transferstruktur_legendeeintrag"
+        typeCodeAttrName = "artcode"
+        typeCodeListAttrName = "artcodeliste"
+        typeCodeListValue = typeCodeList
+        symbolAttrName = "symbol"
+        useCommunalTypeCodes = true
+    }
+}
+
+task updateSymbols(dependsOn: "transferData") {
+    description = "Aggregationstask für das Updaten der Symbole."
+    dependsOn {
+        tasks.findAll { task -> task.name.startsWith('updateSymbols_') }
+    }
+}
+
+task exportData(type: Ili2pgExport, dependsOn: "updateSymbols") {
+    description = "Exportiert die umgebauten Daten aus dem Transferschema in ein INTERLIS-Datei."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelTransferstruktur
+    dbschema = dbSchemaLandUsePlansOereb
+    dataFile = "$rootDir/" + xtfFileName
+    dataset = landUsePlansDataSet
+    disableValidation = true
+}
+
+task replaceWmsServer(dependsOn: "exportData") {
+    description = "Ersetzt verschiedene Elemente (Host, Pfad, etc.) der WMS-Requests (GetMap und GetLegendGraphic)."
+    doLast {
+
+        ant.replace(
+        file: "$rootDir/" + xtfFileName,
+        token: '${wmsHost}',
+        value: 'https://' + geoservicesHostName,
+        encoding: 'UTF-8')
+    }
+}
+
+
+task validateData(type: IliValidator, dependsOn: "replaceWmsServer") {
+    description = "Validiert die exportierten Daten in der Transferstruktur inkl. der externen Beziehungen."
+    dataFiles = [file(Paths.get(pathToTempFolder.toString(), federalLegalBaseDataSet + ".xml")), 
+        file(Paths.get(pathToTempFolder.toString(), cantonalLegalBaseDataSet + ".xtf")), 
+        file(Paths.get("$rootDir/" + xtfFileName))]
+    logFile = "ilivalidator.log"
+    allObjectsAccessible = true
+    configFile = "validateData.toml"
+}
+
+
+task importDataToStage(type: Ili2pgReplace, dependsOn: "validateData") {
+//task importDataToStage(type: Ili2pgReplace, dependsOn: "replaceWmsServer") {
+    description = "Import des NPL-ÖREB-Datensatz in das Stage-Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelTransferstruktur
+    dbschema = "stage"
+    dataFile = file(Paths.get("$rootDir/" + xtfFileName))
+    dataset = landUsePlansDataSet
+    disableValidation = true 
+}
+
+task refreshOerebWMSTablesStage(type: SqlExecutor) {
+    description = "Aktualisiert OEREB WMS Tabellen."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    sqlFiles = ["update_oerebwms_landuseplans_tables.sql"]
+    sqlParameters = [dbSchema: 'stage']
+}
+
+/*
+task uploadToS3(type: AmazonS3FileUploadTask) {
+    description = "Hochladen der exportierten Datei auf S3."
+	file file("$rootDir/" + xtfFileName) 
+	bucketName awsBucketName
+	key xtfFileName
+
+	def m = new ObjectMetadata()
+	m.setCacheControl("no-cache, no-store")
+	objectMetadata = m
+}
+*/
+
+task importDataToLive(type: Ili2pgReplace) {
+    description = "Import des NPL-ÖREB-Datensatz in das Live-Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelTransferstruktur
+    dbschema = "live"
+    dataFile = file(Paths.get("$rootDir/" + xtfFileName))
+    dataset = landUsePlansDataSet
+    disableValidation = true 
+}
+
+task refreshOerebWMSTablesLive(type: SqlExecutor) {
+    description = "Aktualisiert OEREB WMS Tabellen."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    sqlFiles = ["update_oerebwms_landuseplans_tables.sql"]
+    sqlParameters = [dbSchema: 'live']
+}
