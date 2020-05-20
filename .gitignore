@@ -1,0 +1,21 @@
+
+# exclude intellij *.iml files
+**/*.iml
+
+# exclude .idea directories
+**/.idea/
+
+# exclude .gradle directories
+**/.gradle/
+
+# exclude .vagrant directory
+**/.vagrant/
+
+# exclude *.retry files
+**/*.retry
+
+# macOS
+.DS_Store
+
+# KDE
+.directory

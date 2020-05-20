@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TRANSFER xmlns="http://www.interlis.ch/INTERLIS2.3"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.interlis.ch/INTERLIS2.3">
+  <HEADERSECTION SENDER="swisstopo, Federal Directorate of Cadastral Surveying" VERSION="2.3">
+    <MODELS>
+      <MODEL NAME="InternationalCodes_V1" VERSION="2011-08-30" URI="http://www.geo.admin.ch"/>
+      <MODEL NAME="LocalisationCH_V1" VERSION="2011-08-30" URI="http://www.geo.admin.ch"/>
+      <MODEL NAME="CatalogueObjects_V1" VERSION="2011-08-30" URI="http://www.geo.admin.ch"/>
+      <MODEL NAME="OeREBKRM_V1_1" VERSION="2016-08-15" URI="http://models.geo.admin.ch/V_D/OeREB/"/>
+    </MODELS>
+    <!-- Stand der XML-Datei, Etat du fichier XML, Stato del XML-File -->
+    <COMMENT>"2020-05-18"</COMMENT>
+  </HEADERSECTION>
+  <DATASECTION>
+    <OeREBKRM_V1_1.CodelistenText BID="b1">
+      <OeREBKRM_V1_1.CodelistenText.ThemaTxt TID="3">
+        <Code>ch.SO.Einzelschutz</Code>
+        <Titel>
+          <LocalisationCH_V1.MultilingualText>
+            <LocalisedText>
+              <LocalisationCH_V1.LocalisedText>
+                <Language>de</Language>
+                <Text>Einzelschutz</Text>
+              </LocalisationCH_V1.LocalisedText>
+            </LocalisedText>
+          </LocalisationCH_V1.MultilingualText>
+        </Titel>
+      </OeREBKRM_V1_1.CodelistenText.ThemaTxt>
+    </OeREBKRM_V1_1.CodelistenText>
+  </DATASECTION>
+</TRANSFER>

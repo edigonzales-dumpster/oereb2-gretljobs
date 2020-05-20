@@ -1,0 +1,168 @@
+import ch.so.agi.gretl.api.TransferSet
+import ch.so.agi.gretl.tasks.*
+import java.nio.file.Paths
+import de.undercouch.gradle.tasks.download.Download
+
+apply plugin: "de.undercouch.download"
+apply plugin: "ch.so.agi.gretl"
+
+ext {
+    pathToTempFolder = System.getProperty("java.io.tmpdir")
+
+    iliModelVorschriften = "OeREBKRMvs_V1_1"
+    iliModelTransferstruktur = "OeREBKRMtrsfr_V1_1"
+
+    federalLegalBasisBaseUrl = "http://models.geo.admin.ch/V_D/OeREB/"
+    federalLegalBaseDataSet = "OeREBKRM_V1_1_Gesetze_20180501"
+
+    cantonalLegalBasisBaseUrl = "https://geo.so.ch/geodata/ch.so.sk.gesetze.oereb/"
+    cantonalLegalBaseDataSet = "ch.so.sk.gesetze"
+
+    iliModelLandUsePlans = "SO_Nutzungsplanung_20171118"
+    dbSchemaLandUsePlans = "arp_npl"
+    //landUsePlansDataSets = ["2401", "2403", "2405", "2407", "2408", "2456", "2457", "2473", "2474", "2475", "2476", "2479",  "2491", "2498", "2501", "2502", "2514", "2551", "2573", "2580", "2613", "2614", "2615", "2616"]
+    landUsePlansDataSets = ["2502"]
+    landUsePlansBaseUrl = "https://geo.so.ch/geodata/ch.so.arp.nutzungsplanung/"
+    
+    iliModelGroundwaterProtection = "PlanerischerGewaesserschutz_LV95_V1_1"
+    dbSchemaGroundwaterProtection = "afu_gewaesserschutz"
+    groundwaterProtectionDataFile = "afu_gewaesserschutz.xtf"
+    groundwaterProtectionBaseUrl = "https://raw.githubusercontent.com/sogis/oereb-gretljobs/master/development_dbs/"
+
+    iliModelStaticForestPerimeters = "SO_AWJF_Statische_Waldgrenzen_20191119"
+    dbSchemaStaticForestPerimeters = "awjf_statische_waldgrenze"
+    staticForestPerimetersDataFile = "awjf_statische_waldgrenze.xtf"
+    staticForestPerimetersBaseUrl = "https://raw.githubusercontent.com/sogis/oereb-gretljobs/master/development_dbs/"
+
+}    
+
+// Cannot use GRETL for ili2pgImportSchema since not all v4 options
+// are exposed. 
+task createSchemaLandUsePlans(type: SqlExecutor){
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    sqlFiles = ['arp_npl.sql', 'arp_npl_grants.sql']
+}
+
+landUsePlansDataSets.each { landUsePlansDataSet ->
+    def dataSet = landUsePlansDataSet.toString()
+    task "downloadDataLandUsePlans_$dataSet"(type: Download) {
+        src landUsePlansBaseUrl + dataSet + ".xtf"
+        dest pathToTempFolder
+        overwrite true
+
+        doLast {
+            println "File downloaded to: " + pathToTempFolder
+        }        
+    }
+
+    task "replaceDataLandUsePlans_$dataSet"(type: Ili2pgReplace, dependsOn: "downloadDataLandUsePlans_$dataSet") {
+        database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+        models = iliModelLandUsePlans
+        dbschema = dbSchemaLandUsePlans
+        dataFile = file(Paths.get(pathToTempFolder.toString(), dataSet + ".xtf"))
+        dataset = dataSet
+        disableValidation = true
+    }
+}
+
+task replaceDataLandUsePlans() {
+    dependsOn {
+        tasks.findAll { task -> task.name.startsWith('replaceDataLandUsePlans_') }
+    }
+}
+
+/*
+task uploadToS3(type: AmazonS3FileUploadTask) {
+    description = "Hochladen der exportierten Datei auf S3."
+	file file("$rootDir/" + xtfFileName) 
+	bucketName "ch.so.arp.nutzungsplanung.oereb"
+	key xtfFileName
+
+	def m = new ObjectMetadata()
+	m.setCacheControl("no-cache, no-store")
+	objectMetadata = m
+}
+*/
+
+task createSchemaGroundwaterProtection(type: SqlExecutor){
+    database = [dbUriEdit, "admin", "admin"]
+    sqlFiles = ['afu_gewaesserschutz.sql', 'afu_gewaesserschutz_grants.sql']
+}
+
+task downloadDataGroundwaterProtection(type: Download) {
+    src groundwaterProtectionBaseUrl + groundwaterProtectionDataFile
+    dest pathToTempFolder
+    overwrite true
+    doLast {
+        println "File downloaded to: " + pathToTempFolder
+    }        
+}
+
+task replaceDataGroundwaterProtection(type: Ili2pgImport, dependsOn: "downloadDataGroundwaterProtection") {
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelGroundwaterProtection
+    dbschema = dbSchemaGroundwaterProtection
+    dataFile = file(Paths.get(pathToTempFolder.toString(), groundwaterProtectionDataFile))
+    deleteData = true
+    disableValidation = true
+}
+
+
+task createSchemaStaticForestPerimeters(type: SqlExecutor){
+    database = [dbUriEdit, "admin", "admin"]
+    sqlFiles = ['awjf_statische_waldgrenze.sql', 'awjf_statische_waldgrenze_grants.sql']
+}
+
+task downloadDataStaticForestPerimeters(type: Download) {
+    src staticForestPerimetersBaseUrl + staticForestPerimetersDataFile
+    dest pathToTempFolder
+    overwrite true
+    doLast {
+        println "File downloaded to: " + pathToTempFolder
+    }
+}
+
+task replaceDataStaticForestPerimeters(type: Ili2pgImport, dependsOn: "downloadDataStaticForestPerimeters") {
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelStaticForestPerimeters
+    dbschema = dbSchemaStaticForestPerimeters
+    dataFile = file(Paths.get(pathToTempFolder.toString(), staticForestPerimetersDataFile))
+    deleteData = true
+    disableValidation = true
+}
+
+
+task downloadFederalLegalBasis(type: Download) {
+    description = "Download Bundesgesetze ($federalLegalBaseDataSet)."
+    src federalLegalBasisBaseUrl + federalLegalBaseDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+task importFederalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadFederalLegalBasis') {
+    description = "Import Bundesgesetze ($federalLegalBaseDataSet) in das stage Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelVorschriften
+    dbschema = "stage"
+    dataFile = file(Paths.get(pathToTempFolder.toString(), federalLegalBaseDataSet + ".xml"))
+    dataset = "ch.admin.bk.gesetze" 
+    disableValidation = true
+}
+
+task downloadCantonalLegalBasis(type: Download) {
+    description = "Download kantonale Gesetze ($cantonalLegalBaseDataSet)."
+    src cantonalLegalBasisBaseUrl + cantonalLegalBaseDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true    
+}
+
+task importCantonalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalLegalBasis') {
+    description = "Import kantonale Gesetze ($cantonalLegalBaseDataSet) in das stage Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelVorschriften
+    dbschema = "stage"
+    dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalLegalBaseDataSet + ".xtf"))
+    dataset = cantonalLegalBaseDataSet 
+    disableValidation = true
+}
+
