@@ -45,19 +45,23 @@ ext {
     ]    
 }
 
+// Löscht im Prinzip die Daten des Dataset 'ch.so.arp.nutzungsplanung'.
+// TODO: Soll dazu nicht auch der ili2pgDelete-Befehl verwendet werden?
 task deleteFromOereb(type: SqlExecutor) {
     description = "Löscht die umgebauten Daten aus dem Transferschema."
     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
     sqlFiles = ["delete_oereb_landuseplans_tables.sql"]
 }
 
-// In V1.1 haben wir die zuständigen Stellen als Dataset 'missbraucht'. Weil 
-// diese in der Transferstruktur mitgeschickt werden mussten, wurde beim Import
-// der zuständigen Stellen der gewünschte Datasetname (ch.so.arp.nutzungsplanung)
-// vergeben und anschliessend beim Datenumbau immer verwendet. Dies ist jetzt 
-// nicht mehr möglich/notwendig, weil die Assoziation EXTERNAL ist und somit
+// In V1.1 haben wir die zuständigen Stellen als Dataset des Endproduktes 'missbraucht'. 
+// Weil die zuständigen Stellen in der Transferstruktur mitgeschickt werden mussten, wurde beim Import
+// der zuständigen Stellen (aus der vorhandenen XTF-Datei) der gewünschte Datasetname (ch.so.arp.nutzungsplanung)
+// vergeben und anschliessend beim Datenumbau wurde immer dieser Datasetname verwendet. Dies ist jetzt 
+// nicht mehr möglich/notwendig, weil die Assoziation zur zuständigen Stelle EXTERNAL ist und somit
 // die zuständigen Stellen nicht mehr mitgeschickt werden müssen. Aus diesem
-// Grund muss der Basket und das Dataset manuell erstellt werden.
+// Grund muss der Basket und das Dataset für das Endprodukt (die NPL-Daten in der Transferstruktur) 
+// manuell erstellt werden.
+// TODO: Ist es sinnvoller man würde für dieses Dataset eine leere Datei verwenden?
 task createLandUsePlansBasket(type: SqlExecutor, dependsOn: 'deleteFromOereb') {
     description = "Erstellt Basket und Dataset fuer die zu exportierende Transferstruktur."
     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
@@ -86,7 +90,7 @@ task importFederalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadFed
     disableValidation = true
 }
 
-// Die kantonalen Datensätze auf die wir referenzieren beim Umbau müssen zuerst in der richtigen
+// Die kantonalen Datensätze auf die wir beim Umbau referenzieren, müssen zuerst in der richtigen
 // Reihenfolge gelöscht werden. Ansonsten funktioniert ili2pg-replace nicht, da FK constraints
 // verletzt werden.
 
@@ -170,22 +174,6 @@ task importCantonalThemesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCanton
     dataset = "ch.so.agi.themen.oereb" 
     disableValidation = true
 }
-// task downloadResponsibleOffices(type: Download, dependsOn: 'deleteFromOereb') {
-//     description = "Download zuständige Stellen ($responsibleOfficesDataSet)."
-//     src responsibleOfficesBaseUrl + responsibleOfficesDataSet + ".xtf"
-//     dest pathToTempFolder
-//     overwrite true       
-// }
-
-// task importResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'downloadResponsibleOffices') {
-//     description = "Import zuständige Stellen ($responsibleOfficesDataSet)."
-//     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
-//     models = iliModelTransferstruktur
-//     dbschema = dbSchemaLandUsePlansOereb
-//     dataFile = file(Paths.get(pathToTempFolder.toString(), responsibleOfficesDataSet + ".xtf"))
-//     dataset = landUsePlansDataSet
-//     disableValidation = true
-// }
 
 // task transferData(type: SqlExecutor, dependsOn: ["importFederalLegalBasisToOereb", "importCantonalLegalBasisToOereb", "importResponsibleOfficesToOereb"]) {
 //     description = "Führt den Datenumbau in das Transferschema durch."
