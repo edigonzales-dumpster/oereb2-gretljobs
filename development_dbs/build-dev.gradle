@@ -9,14 +9,30 @@ apply plugin: "ch.so.agi.gretl"
 ext {
     pathToTempFolder = System.getProperty("java.io.tmpdir")
 
-    iliModelVorschriften = "OeREBKRMvs_V1_1"
-    iliModelTransferstruktur = "OeREBKRMtrsfr_V1_1"
+    iliModelBasisdefinitionen = "OeREBKRM_V2_0"
+    iliModelVorschriften = "OeREBKRMvs_V2_0"
+    iliModelKonfiguration = "OeREBKRMkvs_V2_0"
+    iliModelTransferstruktur = "OeREBKRMtrsfr_V2_0"
 
-    federalLegalBasisBaseUrl = "http://models.geo.admin.ch/V_D/OeREB/"
-    federalLegalBaseDataSet = "OeREBKRM_V1_1_Gesetze_20180501"
+    federalLegalBasisBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    federalLegalBaseDataSet = "OeREBKRM_V2_0_Gesetze"
 
-    cantonalLegalBasisBaseUrl = "https://geo.so.ch/geodata/ch.so.sk.gesetze.oereb/"
-    cantonalLegalBaseDataSet = "ch.so.sk.gesetze"
+    federalThemesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    federalThemesDataSet = "OeREBKRM_V2_0_Themen"
+
+    federalTextBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    federalTextDataSet = "OeREBKRM_V2_0_Texte"
+
+    cantonalResponsibleOfficeBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    cantonalResponsibleOfficeDataSet = "ch.so.agi.zustaendigestellen.oereb2"
+
+    cantonalLegalBasisBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    cantonalLegalBaseDataSet = "ch.so.sk.gesetze.oereb2"
+
+    cantonalThemesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    cantonalThemesDataSet = "ch.so.agi.themen.oereb2"
+
+    // TODO: Kantonale Texte?
 
     iliModelLandUsePlans = "SO_Nutzungsplanung_20171118"
     dbSchemaLandUsePlans = "arp_npl"
@@ -148,6 +164,57 @@ task importFederalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadFed
     disableValidation = true
 }
 
+task downloadFederalThemes(type: Download) {
+    description = "Download Bundesthemen ($federalThemesDataSet)."
+    src federalThemesBaseUrl + federalThemesDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+task importFederalThemesToOereb(type: Ili2pgReplace, dependsOn: 'downloadFederalThemes') {
+    description = "Import Bundesthemen ($federalThemesDataSet) in das stage Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelKonfiguration
+    dbschema = "stage"
+    dataFile = file(Paths.get(pathToTempFolder.toString(), federalThemesDataSet + ".xml"))
+    dataset = "ch.admin.v_d.themen" 
+    disableValidation = true
+}
+
+task downloadFederalText(type: Download) {
+    description = "Download Bundestexte ($federalTextDataSet)."
+    src federalTextBaseUrl + federalTextDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+task importFederalTextToOereb(type: Ili2pgReplace, dependsOn: 'downloadFederalText') {
+    description = "Import Bundestexte ($federalTextDataSet) in das stage Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelKonfiguration
+    dbschema = "stage"
+    dataFile = file(Paths.get(pathToTempFolder.toString(), federalTextDataSet + ".xml"))
+    dataset = "ch.admin.v_d.texte" 
+    disableValidation = true
+}
+
+task downloadCantonalResponsibleOffice(type: Download) {
+    description = "Download kantonale zuständige Stellen ($cantonalResponsibleOfficeDataSet)."
+    src cantonalResponsibleOfficeBaseUrl + cantonalResponsibleOfficeDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true    
+}
+
+task importCantonalResponsibleOfficeToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalResponsibleOffice') {
+    description = "Import zuständige Stellen ($cantonalResponsibleOfficeDataSet) in das stage Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelBasisdefinitionen
+    dbschema = "stage"
+    dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalResponsibleOfficeDataSet + ".xtf"))
+    dataset = "ch.so.agi.zustaendigestellen.oereb" 
+    disableValidation = true
+}
+
 task downloadCantonalLegalBasis(type: Download) {
     description = "Download kantonale Gesetze ($cantonalLegalBaseDataSet)."
     src cantonalLegalBasisBaseUrl + cantonalLegalBaseDataSet + ".xtf"
@@ -161,7 +228,23 @@ task importCantonalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadCa
     models = iliModelVorschriften
     dbschema = "stage"
     dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalLegalBaseDataSet + ".xtf"))
-    dataset = cantonalLegalBaseDataSet 
+    dataset = "ch.so.sk.gesetze.oereb" 
     disableValidation = true
 }
 
+task downloadCantonalThemes(type: Download) {
+    description = "Download kantonale Gesetze ($cantonalThemesDataSet)."
+    src cantonalThemesBaseUrl + cantonalThemesDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true    
+}
+
+task importCantonalThemesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalThemes') {
+    description = "Import kantonale Themen ($cantonalThemesDataSet) in das stage Schema."
+    database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+    models = iliModelKonfiguration
+    dbschema = "stage"
+    dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalThemesDataSet + ".xtf"))
+    dataset = "ch.so.agi.themen.oereb" 
+    disableValidation = true
+}
