@@ -129,13 +129,15 @@ task downloadCantonalResponsibleOffices(type: Download) {
     overwrite true    
 }
 
-// Import der vorhin gelöschten Datensätz. Man könnte sich auch überlegen, ob man diese Datensätze 
-// (dazu gehören auch die Bundesgesetze) nicht bereits als gegeben annehmen will. Das hatte ich
+// Import der vorhin gelöschten Datensätze. Man könnte sich auch überlegen, ob man diese Datensätze 
+// (dazu gehören auch die Bundesgesetze) nicht bereits als gegeben annehmen will. D.h. Bestandteil
+// des Schemas und nicht des Datenumbaus. Das hatte ich
 // mal so gehabt, musste (? warum ?) es aber ändern. Einen Vorteil hat es aber, wenn man es hier 
-// macht: In der GDI muss das Schema / der Schemeninhalt nicht angepasst werden, sondern es 
-// gehört eigentlich alles zum Datenumbau. Und somit ist der Datenumbau für alles verantwortlich
-// und kann besser und einfach auf Änderungen reagieren (z.B. Änderung Adresse einer zuständigen
-// Stelle).
+// macht: Es gehört eigentlich alles zum Datenumbau. Und somit ist der Datenumbau für alles verantwortlich
+// und kann besser und einfacher auf Änderungen reagieren. Wobei wenn jetzt alles sauber getrennt ist,
+// (EXTERNAL) dürfte es ausser bei der Entwicklung keine Änderungen geben. Die Referenzen müssen
+// einfach stabil bleiben.
+
 task importCantonalResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalResponsibleOffices') {
     description = "Import zuständige Stellen ($cantonalResponsibleOfficesDataSet)."
     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
