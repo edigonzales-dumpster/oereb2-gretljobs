@@ -23,8 +23,8 @@ ext {
     federalTextBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
     federalTextDataSet = "OeREBKRM_V2_0_Texte"
 
-    cantonalResponsibleOfficeBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
-    cantonalResponsibleOfficeDataSet = "ch.so.agi.zustaendigestellen.oereb2"
+    cantonalResponsibleOfficesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    cantonalResponsibleOfficesDataSet = "ch.so.agi.zustaendigestellen.oereb2"
 
     cantonalLegalBasisBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
     cantonalLegalBaseDataSet = "ch.so.sk.gesetze.oereb2"
@@ -86,19 +86,6 @@ task replaceDataLandUsePlans() {
         tasks.findAll { task -> task.name.startsWith('replaceDataLandUsePlans_') }
     }
 }
-
-/*
-task uploadToS3(type: AmazonS3FileUploadTask) {
-    description = "Hochladen der exportierten Datei auf S3."
-	file file("$rootDir/" + xtfFileName) 
-	bucketName "ch.so.arp.nutzungsplanung.oereb"
-	key xtfFileName
-
-	def m = new ObjectMetadata()
-	m.setCacheControl("no-cache, no-store")
-	objectMetadata = m
-}
-*/
 
 task createSchemaGroundwaterProtection(type: SqlExecutor){
     database = [dbUriEdit, "admin", "admin"]
@@ -198,19 +185,19 @@ task importFederalTextToOereb(type: Ili2pgReplace, dependsOn: 'downloadFederalTe
     disableValidation = true
 }
 
-task downloadCantonalResponsibleOffice(type: Download) {
-    description = "Download kantonale zuständige Stellen ($cantonalResponsibleOfficeDataSet)."
-    src cantonalResponsibleOfficeBaseUrl + cantonalResponsibleOfficeDataSet + ".xtf"
+task downloadCantonalResponsibleOffices(type: Download) {
+    description = "Download kantonale zuständige Stellen ($cantonalResponsibleOfficesDataSet)."
+    src cantonalResponsibleOfficesBaseUrl + cantonalResponsibleOfficesDataSet + ".xtf"
     dest pathToTempFolder
     overwrite true    
 }
 
-task importCantonalResponsibleOfficeToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalResponsibleOffice') {
-    description = "Import zuständige Stellen ($cantonalResponsibleOfficeDataSet) in das stage Schema."
+task importCantonalResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalResponsibleOffices') {
+    description = "Import zuständige Stellen ($cantonalResponsibleOfficesDataSet) in das stage Schema."
     database = [dbUriOereb, dbUserOereb, dbPwdOereb]
     models = iliModelBasisdefinitionen
     dbschema = "stage"
-    dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalResponsibleOfficeDataSet + ".xtf"))
+    dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalResponsibleOfficesDataSet + ".xtf"))
     dataset = "ch.so.agi.zustaendigestellen.oereb" 
     disableValidation = true
 }
