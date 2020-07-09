@@ -68,8 +68,9 @@ task createLandUsePlansBasket(type: SqlExecutor, dependsOn: 'deleteFromOereb') {
     sqlFiles = ["create_landuseplans_basket.sql"]
 } 
 
-// Bundesthemen müssen für die Nutzungsplanung nicht importiert werden,
-// da es nur kantonale Subthemen gibt ("abstraktes Bundesthema").
+// Bundesthemen müssen für die den Umbau der Nutzungsplanung nicht importiert werden,
+// da es nur kantonale Subthemen zu diesem Bundesthema gibt und nicht das Bundesthema
+// selbst ("abstraktes Bundesthema").
 // Es muss im Gegensatz zu den kantonalen Datensätzen nichts gelöscht werden, da es nur 
 // einen Bundesdatensatz gibt, also auch keine FK-constraints zwischen Datensätzen.
 task downloadFederalLegalBasis(type: Download, dependsOn: 'createLandUsePlansBasket') {
@@ -128,6 +129,13 @@ task downloadCantonalResponsibleOffices(type: Download) {
     overwrite true    
 }
 
+// Import der vorhin gelöschten Datensätz. Man könnte sich auch überlegen, ob man diese Datensätze 
+// (dazu gehören auch die Bundesgesetze) nicht bereits als gegeben annehmen will. Das hatte ich
+// mal so gehabt, musste (? warum ?) es aber ändern. Einen Vorteil hat es aber, wenn man es hier 
+// macht: In der GDI muss das Schema / der Schemeninhalt nicht angepasst werden, sondern es 
+// gehört eigentlich alles zum Datenumbau. Und somit ist der Datenumbau für alles verantwortlich
+// und kann besser und einfach auf Änderungen reagieren (z.B. Änderung Adresse einer zuständigen
+// Stelle).
 task importCantonalResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalResponsibleOffices') {
     description = "Import zuständige Stellen ($cantonalResponsibleOfficesDataSet)."
     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
