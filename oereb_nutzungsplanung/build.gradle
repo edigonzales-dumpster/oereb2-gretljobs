@@ -23,6 +23,9 @@ ext {
     federalLegalBasisBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
     federalLegalBaseDataSet = "OeREBKRM_V2_0_Gesetze"
 
+    federalThemesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+    federalThemesDataSet = "OeREBKRM_V2_0_Themen"
+
     cantonalResponsibleOfficesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
     cantonalResponsibleOfficesDataSet = "ch.so.agi.zustaendigestellen.oereb2"
 
@@ -31,7 +34,9 @@ ext {
 
     cantonalThemesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
     cantonalThemesDataSet = "ch.so.agi.themen.oereb2"
+}
 
+/*
     // Hier müssen korrekterweise die Einzellayer der WMS-Layergroup stehen.
     wmsLayerList = [
         ["ch.SO.Laermemfindlichkeitsstufen", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Flaechenobjekt"],
@@ -44,6 +49,7 @@ ext {
         ["ch.SO.Waldabstandslinien", "urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Linienobjekt"]
     ]    
 }
+*/
 
 // Löscht im Prinzip die Daten des Dataset 'ch.so.arp.nutzungsplanung'.
 // TODO: Soll dazu nicht auch der ili2pgDelete-Befehl verwendet werden?
@@ -68,12 +74,32 @@ task createLandUsePlansBasket(type: SqlExecutor, dependsOn: 'deleteFromOereb') {
     sqlFiles = ["create_landuseplans_basket.sql"]
 } 
 
-// Bundesthemen müssen für die den Umbau der Nutzungsplanung nicht importiert werden,
-// da es nur kantonale Subthemen zu diesem Bundesthema gibt und nicht das Bundesthema
-// selbst ("abstraktes Bundesthema").
-// Es muss im Gegensatz zu den kantonalen Datensätzen nichts gelöscht werden, da es nur 
-// einen Bundesdatensatz gibt, also auch keine FK-constraints zwischen Datensätzen.
-task downloadFederalLegalBasis(type: Download, dependsOn: 'createLandUsePlansBasket') {
+// Löschen der Bundesdatensätze. Siehe weitere Kommentare bei den kantonalen
+// Datensätzen. 
+
+task deleteFederalThemesFromOereb(type: Ili2pgDelete, dependsOn: 'createLandUsePlansBasket') {
+    description = "Löscht die Bundesthemen (Dataset: $federalThemesDataSet)."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelKonfiguration
+    modeldir = "http://models.geo.admin.ch;https://raw.githubusercontent.com/oereb/oereb2-ilirepo/master/"
+    dbschema = dbSchemaLandUsePlansOereb
+    dataset = "ch.admin.v_d.oerebkrmkvs_thema" 
+}
+
+task deleteFederalLegalBasisFromOereb(type: Ili2pgDelete, dependsOn: 'deleteFederalThemesFromOereb') {
+    description = "Löscht die Bundesgesetze (Dataset: $federalLegalBaseDataSet)."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelVorschriften
+    modeldir = "http://models.geo.admin.ch;https://raw.githubusercontent.com/oereb/oereb2-ilirepo/master/"
+    dbschema = dbSchemaLandUsePlansOereb
+    dataset = "ch.admin.bk.gesetze" 
+}
+
+// Import der Bundesdatensätze, die für den Umbau benötig werden und in umgekehrter
+// Reihenfolge vorhin gelöscht wurden. Siehe weitere Kommentare bei den kantonalen
+// Datensätzen.
+
+task downloadFederalLegalBasis(type: Download, dependsOn: 'deleteFederalLegalBasisFromOereb') {
     description = "Download Bundesgesetze ($federalLegalBaseDataSet)."
     src federalLegalBasisBaseUrl + federalLegalBaseDataSet + ".xml"
     dest pathToTempFolder
@@ -91,11 +117,29 @@ task importFederalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadFed
     disableValidation = true
 }
 
+task downloadFederalThemes(type: Download, dependsOn: 'importFederalLegalBasisToOereb') {
+    description = "Download Bundesthemen ($federalThemesDataSet)."
+    src federalThemesBaseUrl + federalThemesDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true    
+}
+
+task importFederalThemesToOereb(type: Ili2pgReplace, dependsOn: 'downloadFederalThemes') {
+    description = "Import Bundesthemen ($federalThemesDataSet)."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelKonfiguration
+    modeldir = "http://models.geo.admin.ch;https://raw.githubusercontent.com/oereb/oereb2-ilirepo/master/"
+    dbschema = dbSchemaLandUsePlansOereb
+    dataFile = file(Paths.get(pathToTempFolder.toString(), federalThemesDataSet + ".xml"))
+    dataset = "ch.admin.v_d.oerebkrmkvs_thema" 
+    disableValidation = true
+}
+
 // Die kantonalen Datensätze auf die wir beim Umbau referenzieren, müssen zuerst in der richtigen
 // Reihenfolge gelöscht werden. Ansonsten funktioniert ili2pg-replace nicht, da FK constraints
 // verletzt werden.
 
-task deleteCantonalThemesFromOereb(type: Ili2pgDelete, dependsOn: 'deleteFromOereb') {
+task deleteCantonalThemesFromOereb(type: Ili2pgDelete, dependsOn: 'importFederalThemesToOereb') {
     description = "Löscht die kantonalen Themen (Dataset: $cantonalThemesDataSet)."
     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
     models = iliModelKonfiguration
@@ -122,13 +166,6 @@ task deleteCantonalResponsibleOfficesFromOereb(type: Ili2pgDelete, dependsOn: 'd
     dataset = "ch.so.agi.zustaendigestellen.oereb" 
 }
 
-task downloadCantonalResponsibleOffices(type: Download) {
-    description = "Download kantonale zuständige Stellen ($cantonalResponsibleOfficesDataSet)."
-    src cantonalResponsibleOfficesBaseUrl + cantonalResponsibleOfficesDataSet + ".xtf"
-    dest pathToTempFolder
-    overwrite true    
-}
-
 // Import der vorhin gelöschten Datensätze. Man könnte sich auch überlegen, ob man diese Datensätze 
 // (dazu gehören auch die Bundesgesetze) nicht bereits als gegeben annehmen will. D.h. Bestandteil
 // des Schemas und nicht des Datenumbaus. Das hatte ich
@@ -137,6 +174,13 @@ task downloadCantonalResponsibleOffices(type: Download) {
 // und kann besser und einfacher auf Änderungen reagieren. Wobei wenn jetzt alles sauber getrennt ist,
 // (EXTERNAL) dürfte es ausser bei der Entwicklung keine Änderungen geben. Die Referenzen müssen
 // einfach stabil bleiben.
+
+task downloadCantonalResponsibleOffices(type: Download, dependsOn: 'deleteCantonalResponsibleOfficesFromOereb') {
+    description = "Download kantonale zuständige Stellen ($cantonalResponsibleOfficesDataSet)."
+    src cantonalResponsibleOfficesBaseUrl + cantonalResponsibleOfficesDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true    
+}
 
 task importCantonalResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCantonalResponsibleOffices') {
     description = "Import zuständige Stellen ($cantonalResponsibleOfficesDataSet)."
@@ -149,7 +193,7 @@ task importCantonalResponsibleOfficesToOereb(type: Ili2pgReplace, dependsOn: 'do
     disableValidation = true
 }
 
-task downloadCantonalLegalBasis(type: Download, dependsOn: 'deleteFromOereb') {
+task downloadCantonalLegalBasis(type: Download, dependsOn: 'importCantonalResponsibleOfficesToOereb') {
     description = "Download kantonale Gesetze ($cantonalLegalBaseDataSet)."
     src cantonalLegalBasisBaseUrl + cantonalLegalBaseDataSet + ".xtf"
     dest pathToTempFolder
@@ -167,7 +211,7 @@ task importCantonalLegalBasisToOereb(type: Ili2pgReplace, dependsOn: 'downloadCa
     disableValidation = true
 }
 
-task downloadCantonalThemes(type: Download) {
+task downloadCantonalThemes(type: Download, dependsOn: 'importCantonalLegalBasisToOereb') {
     description = "Download kantonale Gesetze ($cantonalThemesDataSet)."
     src cantonalThemesBaseUrl + cantonalThemesDataSet + ".xtf"
     dest pathToTempFolder
@@ -185,11 +229,13 @@ task importCantonalThemesToOereb(type: Ili2pgReplace, dependsOn: 'downloadCanton
     disableValidation = true
 }
 
-// task transferData(type: SqlExecutor, dependsOn: ["importFederalLegalBasisToOereb", "importCantonalLegalBasisToOereb", "importResponsibleOfficesToOereb"]) {
-//     description = "Führt den Datenumbau in das Transferschema durch."
-//     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
-//     sqlFiles = ["insert_oereb_landuseplans_tables.sql"]
-// }
+// Datenumbau
+task transferData(type: SqlExecutor, dependsOn: ["importFederalLegalBasisToOereb", "importCantonalResponsibleOfficesToOereb", "importCantonalLegalBasisToOereb", "importCantonalThemesToOereb"]) {
+    description = "Führt den Datenumbau in das Transferschema durch."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    sqlFiles = ["insert_oereb_landuseplans_tables.sql"]
+}
+
 
 // wmsLayerList.each { wmsLayer ->
 //     def wmsLayerName = wmsLayer.getAt(0)
