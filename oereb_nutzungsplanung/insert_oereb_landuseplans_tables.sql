@@ -1,4 +1,13 @@
+/* FRAGEN:
+ * - Zusammenspiel Legendeneintrag <-> Darstellungsdienst <-> Eigentumsbeschränkung <-> Legendeneintrag
+ * - Reicht die WMS-Layergruppe oder müssen die WMS-Einzellayer erfasst und verknüpft werden? Bei V1.1 reicht
+ * die Layergruppe. Vielleicht hilft hier sogar auch, dass es für jeden Geometrietyp ein Symbol gibt.
+ * 
+ */
+
 /*
+ * Allgemeine Bemerkungen:
+ *
  * Die korrekte Reihenfolge der Queries ist zwingend. 
  * 
  * Es wird versucht möglichst rasch die Daten in den Tabellen zu speichern. So
@@ -10,7 +19,6 @@
  * Quelltabelle) in der Zieltabelle beizubehalten. Damit bleiben Beziehungen
  * 'bestehen' und sind einfacher zu behandeln.
  */
-
 
 /* 
  * Als erstes wird der Darstellungsdienst umgebaut. 
