@@ -33,7 +33,10 @@ WITH darstellungsdienst AS
         nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS t_id,
         basket_dataset.basket_t_id AS t_basket,
         basket_dataset.datasetname AS t_datasetname,
-        themes.subcode
+        CASE 
+            WHEN subcode IS NULL THEN acode 
+            ELSE subcode
+        END AS wmslayer 
     FROM
         (
             SELECT
@@ -43,6 +46,10 @@ WITH darstellungsdienst AS
                 arp_npl_oereb.thema_thema
             WHERE
                 subcode IS NOT NULL
+            OR 
+                acode = 'ch.Waldabstandslinien'
+            OR 
+                acode = 'ch.Laermemfindlichkeitsstufen'
         ) AS themes
         LEFT JOIN 
         (
@@ -111,13 +118,14 @@ SELECT
     darstellungsdienst.t_datasetname,
     0,
     'de',
-    '${wmsHost}/wms/oereb?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=true&LAYERS='||subcode||'&STYLES=&SRS=EPSG%3A2056&CRS=EPSG%3A2056&DPI=96&WIDTH=1200&HEIGHT=1146&BBOX=2591250%2C1211350%2C2646050%2C1263700',
+    '${wmsHost}/wms/oereb?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=true&LAYERS='||wmslayer||'&STYLES=&SRS=EPSG%3A2056&CRS=EPSG%3A2056&DPI=96&WIDTH=1200&HEIGHT=1146&BBOX=2591250%2C1211350%2C2646050%2C1263700',
     darstellungsdienst_multilingualuri.t_id
 FROM
     darstellungsdienst
     LEFT JOIN darstellungsdienst_multilingualuri
     ON darstellungsdienst.t_id = darstellungsdienst_multilingualuri.transfrstrkstllngsdnst_verweiswms
 ;
+
 
 
 
