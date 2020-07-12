@@ -2,7 +2,8 @@
  * - Zusammenspiel Legendeneintrag <-> Darstellungsdienst <-> Eigentumsbeschränkung <-> Legendeneintrag
  * - Reicht die WMS-Layergruppe oder müssen die WMS-Einzellayer erfasst und verknüpft werden? Bei V1.1 reicht
  * die Layergruppe. Vielleicht hilft hier sogar auch, dass es für jeden Geometrietyp ein Symbol gibt.
- * 
+ * - LEFT JOIN bei den Eigentumbeschränkungen mit dem Darstellungsdienst kann vielleicht erst ganz am Schluss
+ * gemacht werden (über alle zusammen). Dann braucht es aber noch ein separates Join-Attribut (code, subcode).
  */
 
 /*
@@ -129,12 +130,184 @@ FROM
 /* 
  * Eigentumsbeschränkungen und Legendeneinträge
  * 
- * (1) Müssen in einem CTE-Block gemeinsame abgehandlet werden, weil die Eigentumsbeschränkungen
+ * (1) Müssen in einem CTE-Block gemeinsam abgehandlet werden, weil die Eigentumsbeschränkungen
  * auf die Legendeneinträge verweisen aber man die Legendeinträge nur erstellen kann, wenn man
  * weiss welche Eigentumsbeschränkungen es gibt. Benötigt werden ebenfalls noch die Darstellungsdienste
  * aus dem ersten CTE-Block damit man den Legendeneintrag via Thema dem richtigen Darstellungsdient
  * zuweisen kann.
+ * 
+ * (2) 'typ_grundnutzung IN' (etc.) filtern Eigentumsbeschränkungen weg, die mit keinem Dokument verknüpft sind.
+ * Sind solche Objekte vorhanden, handelt es sich in der Regel um einen Datenfehler in den Ursprungsdaten.
+ * 'publiziertab IS NOT NULL' filtert Objekte raus, die kein Publikationsdatum haben (Mandatory im Rahmenmodell.)
+ *
+ * (3) rechtsstatus = 'inKraft': Die Bedingung hier reicht nicht, damit (später) auch nur die Geometrien verwendet
+ * werden, die 'inKraft' sind. Grund dafür ist, dass es nicht-'inKraft' Geometrien geben kann, die auf einen
+ * Typ zeigen, dem Geometrien zugewiesen sind, die 'inKraft' sind. Nur solche Typen, dem gar keine 'inKraft'
+ * Geometrien zugewiesen sind, werden hier rausgefiltert.
+ *
+ * (4) Ebenfalls reicht die Bedingung 'inKraft' bei den Dokumenten nicht. Hier werden nur Typen rausgefiltert, die 
+ * nur Dokumente angehängt haben, die NICHT inKraft sind. Sind bei einem Typ aber sowohl inKraft wie auch nicht-
+ * inKraft-Dokumente angehängt, wird korrekterweise der Typ trotzdem verwendet. Bei den Dokumenten muss der
+ * Filter nochmals gesetzt werden.
+ * 
+ * (5) Die richtigen Symbole werden erst nachträglich mit einem andere Gretl-Task korrekt abgefüllt. Hier wird
+ * ein Dummy-Symbol gespeichert.
  */
+
+WITH darstellungsdienst AS 
+(
+    SELECT 
+        localiseduri.atext,
+        darstellungsdienst.t_id 
+    FROM 
+        arp_npl_oereb.transferstruktur_darstellungsdienst AS darstellungsdienst
+        LEFT JOIN arp_npl_oereb.multilingualuri AS multilingualuri  
+        ON multilingualuri.transfrstrkstllngsdnst_verweiswms = darstellungsdienst.t_id 
+        LEFT JOIN arp_npl_oereb.localiseduri AS localiseduri 
+        ON localiseduri.multilingualuri_localisedtext = multilingualuri.t_id 
+)
+,
+eigentumsbeschraenkung_legendeneintrag AS 
+(
+    SELECT
+        DISTINCT ON (typ_grundnutzung.t_ili_tid)
+        typ_grundnutzung.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Nutzungsplanung' AS thema,
+        'ch.SO.NutzungsplanungGrundnutzung' AS subthema,
+        grundnutzung.rechtsstatus,
+        grundnutzung.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbolflaeche,
+        typ_grundnutzung.bezeichnung AS legendetext_de,
+        typ_grundnutzung.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Grundnutzung.'||typ_grundnutzung.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.nutzungsplanung_typ_grundnutzung AS typ_grundnutzung
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_grundnutzung.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.nutzungsplanung_grundnutzung AS grundnutzung
+        ON typ_grundnutzung.t_id = grundnutzung.typ_grundnutzung,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.NutzungsplanungGrundnutzung%'
+    WHERE
+        typ_kt NOT IN 
+        (
+            'N180_Verkehrszone_Strasse',
+            'N181_Verkehrszone_Bahnareal',
+            'N182_Verkehrszone_Flugplatzareal',
+            'N189_weitere_Verkehrszonen',
+            'N210_Landwirtschaftszone',
+            'N320_Gewaesser',
+            'N329_weitere_Zonen_fuer_Gewaesser_und_ihre_Ufer',
+            'N420_Verkehrsflaeche_Strasse', 
+            'N421_Verkehrsflaeche_Bahnareal', 
+            'N422_Verkehrsflaeche_Flugplatzareal', 
+            'N429_weitere_Verkehrsflaechen', 
+            'N430_Reservezone_Wohnzone_Mischzone_Kernzone_Zentrumszone',
+            'N431_Reservezone_Arbeiten',
+            'N432_Reservezone_OeBA',
+            'N439_Reservezone',
+            'N440_Wald'
+        )
+        AND
+        typ_grundnutzung.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_grundnutzung) 
+                typ_grundnutzung
+            FROM
+                arp_npl.nutzungsplanung_typ_grundnutzung_dokument AS typ_grundnutzung_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_grundnutzung_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        grundnutzung.publiziertab IS NOT NULL
+        AND
+        grundnutzung.rechtsstatus = 'inKraft'
+)
+,
+legendeneintrag_insert AS 
+(
+    INSERT INTO
+        arp_npl_oereb.transferstruktur_legendeeintrag 
+        (
+            t_id,
+            t_basket,
+            t_datasetname,
+            symbolflaeche,
+            legendetext_de,
+            artcode,
+            artcodeliste,
+            thema,
+            subthema,
+            darstellungsdienst
+        )
+    SELECT 
+        legendeneintrag_t_id,
+        basket_t_id,
+        datasetname,
+        symbolflaeche,
+        legendetext_de,
+        artcode,
+        artcodeliste,
+        thema,
+        subthema,
+        darstellungsdienst
+    FROM 
+       eigentumsbeschraenkung_legendeneintrag 
+)  
+INSERT INTO 
+    arp_npl_oereb.transferstruktur_eigentumsbeschraenkung 
+    (
+        t_id,
+        t_basket,
+        t_datasetname,
+        thema,
+        subthema,
+        rechtsstatus,
+        publiziertab,
+        darstellungsdienst,
+        legende,
+        zustaendigestelle
+    )
+    SELECT
+        t_id,
+        basket_t_id,
+        datasetname,
+        thema,
+        subthema,
+        rechtsstatus,
+        publiziertab,
+        darstellungsdienst,
+        legendeneintrag_t_id,
+        zustaendigestelle
+    FROM 
+        eigentumsbeschraenkung_legendeneintrag
+;
+
+
+
+
+
+
 
 
 
@@ -202,73 +375,73 @@ FROM
 --         zustaendigestelle
 --     )
 --     -- Grundnutzung
---     SELECT
---         DISTINCT ON (typ_grundnutzung.t_ili_tid)
---         typ_grundnutzung.t_id,
---         basket_dataset.basket_t_id,
---         basket_dataset.datasetname,
---         typ_grundnutzung.bezeichnung AS aussage_de,
---         'Nutzungsplanung' AS thema,
---         'ch.SO.NutzungsplanungGrundnutzung' AS subthema,
---         typ_grundnutzung.code_kommunal AS artcode,
---         'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Grundnutzung.'||typ_grundnutzung.t_datasetname AS artcodeliste,
---         grundnutzung.rechtsstatus,
---         grundnutzung.publiziertab, 
---         amt.t_id AS zustaendigestelle
---     FROM
---         arp_npl.nutzungsplanung_typ_grundnutzung AS typ_grundnutzung
---         LEFT JOIN arp_npl_oereb.vorschriften_amt AS amt
---         ON typ_grundnutzung.t_datasetname = RIGHT(amt.t_ili_tid, 4)
---         LEFT JOIN arp_npl.nutzungsplanung_grundnutzung AS grundnutzung
---         ON typ_grundnutzung.t_id = grundnutzung.typ_grundnutzung,
---         (
---             SELECT
---                 basket.t_id AS basket_t_id,
---                 dataset.datasetname AS datasetname               
---             FROM
---                 arp_npl_oereb.t_ili2db_dataset AS dataset
---                 LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
---                 ON basket.dataset = dataset.t_id
---             WHERE
---                 dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
---         ) AS basket_dataset
---     WHERE
---         typ_kt NOT IN 
---         (
---             'N180_Verkehrszone_Strasse',
---             'N181_Verkehrszone_Bahnareal',
---             'N182_Verkehrszone_Flugplatzareal',
---             'N189_weitere_Verkehrszonen',
---             'N210_Landwirtschaftszone',
---             'N320_Gewaesser',
---             'N329_weitere_Zonen_fuer_Gewaesser_und_ihre_Ufer',
---             'N420_Verkehrsflaeche_Strasse', 
---             'N421_Verkehrsflaeche_Bahnareal', 
---             'N422_Verkehrsflaeche_Flugplatzareal', 
---             'N429_weitere_Verkehrsflaechen', 
---             'N430_Reservezone_Wohnzone_Mischzone_Kernzone_Zentrumszone',
---             'N431_Reservezone_Arbeiten',
---             'N432_Reservezone_OeBA',
---             'N439_Reservezone',
---             'N440_Wald'
---         )
---         AND
---         typ_grundnutzung.t_id IN 
---         (
---             SELECT
---                 DISTINCT ON (typ_grundnutzung) 
---                 typ_grundnutzung
---             FROM
---                 arp_npl.nutzungsplanung_typ_grundnutzung_dokument AS typ_grundnutzung_dokument
---                 LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
---                 ON dokument.t_id = typ_grundnutzung_dokument.dokument
---             WHERE
---                 dokument.rechtsstatus = 'inKraft'        
---         )  
---         AND
---         grundnutzung.publiziertab IS NOT NULL
---         AND
---         grundnutzung.rechtsstatus = 'inKraft'
+    -- SELECT
+    --     DISTINCT ON (typ_grundnutzung.t_ili_tid)
+    --     typ_grundnutzung.t_id,
+    --     basket_dataset.basket_t_id,
+    --     basket_dataset.datasetname,
+    --     typ_grundnutzung.bezeichnung AS aussage_de,
+    --     'Nutzungsplanung' AS thema,
+    --     'ch.SO.NutzungsplanungGrundnutzung' AS subthema,
+    --     typ_grundnutzung.code_kommunal AS artcode,
+    --     'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Grundnutzung.'||typ_grundnutzung.t_datasetname AS artcodeliste,
+    --     grundnutzung.rechtsstatus,
+    --     grundnutzung.publiziertab, 
+    --     amt.t_id AS zustaendigestelle
+    -- FROM
+    --     arp_npl.nutzungsplanung_typ_grundnutzung AS typ_grundnutzung
+    --     LEFT JOIN arp_npl_oereb.vorschriften_amt AS amt
+    --     ON typ_grundnutzung.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+    --     LEFT JOIN arp_npl.nutzungsplanung_grundnutzung AS grundnutzung
+    --     ON typ_grundnutzung.t_id = grundnutzung.typ_grundnutzung,
+    --     (
+    --         SELECT
+    --             basket.t_id AS basket_t_id,
+    --             dataset.datasetname AS datasetname               
+    --         FROM
+    --             arp_npl_oereb.t_ili2db_dataset AS dataset
+    --             LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+    --             ON basket.dataset = dataset.t_id
+    --         WHERE
+    --             dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+    --     ) AS basket_dataset
+    -- WHERE
+    --     typ_kt NOT IN 
+    --     (
+    --         'N180_Verkehrszone_Strasse',
+    --         'N181_Verkehrszone_Bahnareal',
+    --         'N182_Verkehrszone_Flugplatzareal',
+    --         'N189_weitere_Verkehrszonen',
+    --         'N210_Landwirtschaftszone',
+    --         'N320_Gewaesser',
+    --         'N329_weitere_Zonen_fuer_Gewaesser_und_ihre_Ufer',
+    --         'N420_Verkehrsflaeche_Strasse', 
+    --         'N421_Verkehrsflaeche_Bahnareal', 
+    --         'N422_Verkehrsflaeche_Flugplatzareal', 
+    --         'N429_weitere_Verkehrsflaechen', 
+    --         'N430_Reservezone_Wohnzone_Mischzone_Kernzone_Zentrumszone',
+    --         'N431_Reservezone_Arbeiten',
+    --         'N432_Reservezone_OeBA',
+    --         'N439_Reservezone',
+    --         'N440_Wald'
+    --     )
+    --     AND
+    --     typ_grundnutzung.t_id IN 
+    --     (
+    --         SELECT
+    --             DISTINCT ON (typ_grundnutzung) 
+    --             typ_grundnutzung
+    --         FROM
+    --             arp_npl.nutzungsplanung_typ_grundnutzung_dokument AS typ_grundnutzung_dokument
+    --             LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+    --             ON dokument.t_id = typ_grundnutzung_dokument.dokument
+    --         WHERE
+    --             dokument.rechtsstatus = 'inKraft'        
+    --     )  
+    --     AND
+    --     grundnutzung.publiziertab IS NOT NULL
+    --     AND
+    --     grundnutzung.rechtsstatus = 'inKraft'
 
 --     UNION ALL
     
