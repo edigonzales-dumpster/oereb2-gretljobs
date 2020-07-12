@@ -126,6 +126,16 @@ FROM
     ON darstellungsdienst.t_id = darstellungsdienst_multilingualuri.transfrstrkstllngsdnst_verweiswms
 ;
 
+/* 
+ * Eigentumsbeschränkungen und Legendeneinträge
+ * 
+ * (1) Müssen in einem CTE-Block gemeinsame abgehandlet werden, weil die Eigentumsbeschränkungen
+ * auf die Legendeneinträge verweisen aber man die Legendeinträge nur erstellen kann, wenn man
+ * weiss welche Eigentumsbeschränkungen es gibt. Benötigt werden ebenfalls noch die Darstellungsdienste
+ * aus dem ersten CTE-Block damit man den Legendeneintrag via Thema dem richtigen Darstellungsdient
+ * zuweisen kann.
+ */
+
 
 
 
