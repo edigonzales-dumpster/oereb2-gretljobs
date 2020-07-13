@@ -167,6 +167,12 @@ WITH darstellungsdienst AS
         ON localiseduri.multilingualuri_localisedtext = multilingualuri.t_id 
 )
 ,
+
+
+-- TODO: auch gleich mit überlagernde Linien (= anderer Geometrietyp) und Waldabstandslinien (anderes Hauptthema) prüfen,
+-- bevor ich weiter fahre.
+
+
 eigentumsbeschraenkung_legendeneintrag AS 
 (
     SELECT
