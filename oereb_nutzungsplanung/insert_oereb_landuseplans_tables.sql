@@ -152,6 +152,9 @@ FROM
  * 
  * (5) Die richtigen Symbole werden erst nachträglich mit einem andere Gretl-Task korrekt abgefüllt. Hier wird
  * ein Dummy-Symbol gespeichert.
+ *
+ * (6) Die Query für Waldabstandslinien und Baulinien ist identisch bis auf den Where-Filter. TODO: Vereinfachung 
+ * möglich? 
  */
 
 WITH darstellungsdienst AS 
@@ -167,14 +170,9 @@ WITH darstellungsdienst AS
         ON localiseduri.multilingualuri_localisedtext = multilingualuri.t_id 
 )
 ,
-
-
--- TODO: auch gleich mit überlagernde Linien (= anderer Geometrietyp) und Waldabstandslinien (anderes Hauptthema) prüfen,
--- bevor ich weiter fahre.
-
-
 eigentumsbeschraenkung_legendeneintrag AS 
 (
+    -- Grundnutzung
     SELECT
         DISTINCT ON (typ_grundnutzung.t_ili_tid)
         typ_grundnutzung.t_id,
@@ -250,6 +248,510 @@ eigentumsbeschraenkung_legendeneintrag AS
         grundnutzung.publiziertab IS NOT NULL
         AND
         grundnutzung.rechtsstatus = 'inKraft'
+    
+    UNION ALL 
+    
+    -- Überlagernd (Flaeche) 
+    SELECT
+        DISTINCT ON (typ_ueberlagernd_flaeche.t_ili_tid)
+        typ_ueberlagernd_flaeche.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Nutzungsplanung' AS thema,
+        'ch.SO.NutzungsplanungUeberlagernd' AS subthema,
+        ueberlagernd_flaeche.rechtsstatus,
+        ueberlagernd_flaeche.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbolflaeche,
+        CAST(NULL AS bytea) as symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_ueberlagernd_flaeche.bezeichnung AS legendetext_de,
+        typ_ueberlagernd_flaeche.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Flaeche.'||typ_ueberlagernd_flaeche.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche AS typ_ueberlagernd_flaeche
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_ueberlagernd_flaeche.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.nutzungsplanung_ueberlagernd_flaeche AS ueberlagernd_flaeche
+        ON typ_ueberlagernd_flaeche.t_id = ueberlagernd_flaeche.typ_ueberlagernd_flaeche,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.NutzungsplanungUeberlagernd%'
+    WHERE
+        (
+            typ_kt IN 
+            (
+                'N510_ueberlagernde_Ortsbildschutzzone',
+                'N523_Landschaftsschutzzone',
+                'N526_kantonale_Landwirtschafts_und_Schutzzone_Witi',
+                'N527_kantonale_Uferschutzzone',
+                'N528_kommunale_Uferschutzzone_ausserhalb_Bauzonen',
+                'N529_weitere_Schutzzonen_fuer_Lebensraeume_und_Landschaften',
+                'N590_Hofstattzone_Freihaltezone',
+                'N591_Bauliche_Einschraenkungen',
+                'N690_kantonales_Vorranggebiet_Natur_und_Landschaft',
+                'N691_kommunales_Vorranggebiet_Natur_und_Landschaft',
+                'N692_Planungszone',
+                'N699_weitere_flaechenbezogene_Festlegungen_NP',
+                'N812_geologisches_Objekt',
+                'N813_Naturobjekt',
+                'N822_schuetzenswertes_Kulturobjekt',
+                'N823_erhaltenswertes_Kulturobjekt'
+            )
+            OR
+            (
+                typ_kt = 'N599_weitere_ueberlagernde_Nutzungszonen' AND verbindlichkeit = 'Nutzungsplanfestlegung'
+            ) 
+        )   
+        AND
+        typ_ueberlagernd_flaeche.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_ueberlagernd_flaeche) 
+                typ_ueberlagernd_flaeche
+            FROM
+                arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche_dokument AS typ_ueberlagernd_flaeche_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_ueberlagernd_flaeche_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        ueberlagernd_flaeche.publiziertab IS NOT NULL
+        AND
+        ueberlagernd_flaeche.rechtsstatus = 'inKraft'
+        
+    UNION ALL
+    
+    -- Überlagernd (Linie) 
+    SELECT
+        DISTINCT ON (typ_ueberlagernd_linie.t_ili_tid)
+        typ_ueberlagernd_linie.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Nutzungsplanung' AS thema,
+        'ch.SO.NutzungsplanungUeberlagernd' AS subthema,
+        ueberlagernd_linie.rechtsstatus,
+        ueberlagernd_linie.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        CAST(NULL AS bytea) as symbolflaeche,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_ueberlagernd_linie.bezeichnung AS legendetext_de,
+        typ_ueberlagernd_linie.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Linie.'||typ_ueberlagernd_linie.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.nutzungsplanung_typ_ueberlagernd_linie AS typ_ueberlagernd_linie
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_ueberlagernd_linie.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.nutzungsplanung_ueberlagernd_linie AS ueberlagernd_linie
+        ON typ_ueberlagernd_linie.t_id = ueberlagernd_linie.typ_ueberlagernd_linie,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.NutzungsplanungUeberlagernd%'
+    WHERE
+        (
+            typ_kt = 'N799_weitere_linienbezogene_Festlegungen_NP' AND verbindlichkeit = 'Nutzungsplanfestlegung'
+        )
+        AND
+        typ_ueberlagernd_linie.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_ueberlagernd_linie) 
+                typ_ueberlagernd_linie
+            FROM
+                arp_npl.nutzungsplanung_typ_ueberlagernd_linie_dokument AS typ_ueberlagernd_linie_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_ueberlagernd_linie_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        ueberlagernd_linie.publiziertab IS NOT NULL
+        AND
+        ueberlagernd_linie.rechtsstatus = 'inKraft'
+
+    UNION ALL
+
+    -- Überlagernd (Punkt) 
+    SELECT
+        DISTINCT ON (typ_ueberlagernd_punkt.t_ili_tid)
+        typ_ueberlagernd_punkt.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Nutzungsplanung' AS thema,
+        'ch.SO.NutzungsplanungUeberlagernd' AS subthema,
+        ueberlagernd_punkt.rechtsstatus,
+        ueberlagernd_punkt.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        CAST(NULL AS bytea) as symbolflaeche,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_ueberlagernd_punkt.bezeichnung AS legendetext_de,
+        typ_ueberlagernd_punkt.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_punkt.'||typ_ueberlagernd_punkt.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.nutzungsplanung_typ_ueberlagernd_punkt AS typ_ueberlagernd_punkt
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_ueberlagernd_punkt.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.nutzungsplanung_ueberlagernd_punkt AS ueberlagernd_punkt
+        ON typ_ueberlagernd_punkt.t_id = ueberlagernd_punkt.typ_ueberlagernd_punkt,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.NutzungsplanungUeberlagernd%'
+    WHERE
+        (
+            typ_kt IN 
+            (
+                'N811_erhaltenswerter_Einzelbaum',
+                'N822_schuetzenswertes_Kulturobjekt',
+                'N823_erhaltenswertes_Kulturobjekt'
+            )
+            OR
+            (
+                typ_kt = 'N899_weitere_punktbezogene_Festlegungen_NP' AND verbindlichkeit = 'Nutzungsplanfestlegung'
+            )   
+        )
+        AND
+        typ_ueberlagernd_punkt.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_ueberlagernd_punkt) 
+                typ_ueberlagernd_punkt
+            FROM
+                arp_npl.nutzungsplanung_typ_ueberlagernd_punkt_dokument AS typ_ueberlagernd_punkt_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_ueberlagernd_punkt_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        ueberlagernd_punkt.publiziertab IS NOT NULL
+        AND
+        ueberlagernd_punkt.rechtsstatus = 'inKraft'
+
+    UNION ALL 
+
+    -- Sondernutzungspläne
+    SELECT
+        DISTINCT ON (typ_ueberlagernd_flaeche.t_ili_tid)
+        typ_ueberlagernd_flaeche.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Nutzungsplanung' AS thema,
+        'ch.SO.NutzungsplanungUeberlagernd' AS subthema,
+        ueberlagernd_flaeche.rechtsstatus,
+        ueberlagernd_flaeche.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbolflaeche,
+        CAST(NULL AS bytea) as symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_ueberlagernd_flaeche.bezeichnung AS legendetext_de,
+        typ_ueberlagernd_flaeche.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Flaeche.'||typ_ueberlagernd_flaeche.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche AS typ_ueberlagernd_flaeche
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_ueberlagernd_flaeche.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.nutzungsplanung_ueberlagernd_flaeche AS ueberlagernd_flaeche
+        ON typ_ueberlagernd_flaeche.t_id = ueberlagernd_flaeche.typ_ueberlagernd_flaeche,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.NutzungsplanungUeberlagernd%'
+    WHERE
+        typ_kt IN 
+        (
+            'N610_Perimeter_kantonaler_Nutzungsplan',
+            'N611_Perimeter_kommunaler_Gestaltungsplan',
+            'N620_Perimeter_Gestaltungsplanpflicht'
+        ) 
+        AND
+        typ_ueberlagernd_flaeche.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_ueberlagernd_flaeche) 
+                typ_ueberlagernd_flaeche
+            FROM
+                arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche_dokument AS typ_ueberlagernd_flaeche_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_ueberlagernd_flaeche_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        ueberlagernd_flaeche.publiziertab IS NOT NULL
+        AND
+        ueberlagernd_flaeche.rechtsstatus = 'inKraft'
+        
+    UNION ALL
+
+    -- Baulinien
+    SELECT
+        DISTINCT ON (typ_erschliessung_linienobjekt.t_ili_tid)
+        typ_erschliessung_linienobjekt.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Nutzungsplanung' AS thema,
+        'ch.SO.Baulinien' AS subthema,
+        erschliessung_linienobjekt.rechtsstatus,
+        erschliessung_linienobjekt.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        CAST(NULL AS bytea) as symbolflaeche,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_erschliessung_linienobjekt.bezeichnung AS legendetext_de,
+        typ_erschliessung_linienobjekt.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Linienobjekt.'||typ_erschliessung_linienobjekt.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.erschlssngsplnung_typ_erschliessung_linienobjekt AS typ_erschliessung_linienobjekt
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_erschliessung_linienobjekt.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.erschlssngsplnung_erschliessung_linienobjekt AS erschliessung_linienobjekt
+        ON typ_erschliessung_linienobjekt.t_id = erschliessung_linienobjekt.typ_erschliessung_linienobjekt,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.Baulinien%'
+    WHERE
+        typ_kt IN 
+        (
+            'E711_Baulinie_Strasse_kantonal',
+            'E712_Vorbaulinie_kantonal',
+            'E713_Gestaltungsbaulinie_kantonal',
+            'E714_Rueckwaertige_Baulinie_kantonal',
+            'E715_Baulinie_Infrastruktur_kantonal',
+            'E719_weitere_nationale_und_kantonale_Baulinien',
+            'E720_Baulinie_Strasse',
+            'E721_Vorbaulinie',
+            'E722_Gestaltungsbaulinie',
+            'E723_Rueckwaertige_Baulinie',
+            'E724_Baulinie_Infrastruktur',
+            'E726_Baulinie_Hecke',
+            'E727_Baulinie_Gewaesser',
+            'E728_Immissionsstreifen',
+            'E729_weitere_kommunale_Baulinien'
+        )
+        AND
+        typ_erschliessung_linienobjekt.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_erschliessung_linienobjekt) 
+                typ_erschliessung_linienobjekt
+            FROM
+                arp_npl.erschlssngsplnung_typ_erschliessung_linienobjekt_dokument AS typ_erschliessung_linienobjekt_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_erschliessung_linienobjekt_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        erschliessung_linienobjekt.publiziertab IS NOT NULL
+        AND
+        erschliessung_linienobjekt.rechtsstatus = 'inKraft'
+
+    UNION ALL
+
+    -- Waldabstandslinie 
+    SELECT
+        DISTINCT ON (typ_erschliessung_linienobjekt.t_ili_tid)
+        typ_erschliessung_linienobjekt.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Waldabstandslinien' AS thema,
+        CAST(NULL AS text) AS subthema,
+        erschliessung_linienobjekt.rechtsstatus,
+        erschliessung_linienobjekt.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        CAST(NULL AS bytea) as symbolflaeche,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_erschliessung_linienobjekt.bezeichnung AS legendetext_de,
+        typ_erschliessung_linienobjekt.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Erschliessung_Linienobjekt.'||typ_erschliessung_linienobjekt.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.erschlssngsplnung_typ_erschliessung_linienobjekt AS typ_erschliessung_linienobjekt
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_erschliessung_linienobjekt.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.erschlssngsplnung_erschliessung_linienobjekt AS erschliessung_linienobjekt
+        ON typ_erschliessung_linienobjekt.t_id = erschliessung_linienobjekt.typ_erschliessung_linienobjekt,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.SO.Baulinien%'
+    WHERE
+        typ_kt IN 
+        (
+            'E725_Waldabstandslinie'
+        )
+        AND
+        typ_erschliessung_linienobjekt.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_erschliessung_linienobjekt) 
+                typ_erschliessung_linienobjekt
+            FROM
+                arp_npl.erschlssngsplnung_typ_erschliessung_linienobjekt_dokument AS typ_erschliessung_linienobjekt_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_erschliessung_linienobjekt_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        erschliessung_linienobjekt.publiziertab IS NOT NULL
+        AND
+        erschliessung_linienobjekt.rechtsstatus = 'inKraft'
+
+    UNION ALL
+
+    -- Laermempfindlichkeit 
+    SELECT
+        DISTINCT ON (typ_ueberlagernd_flaeche.t_ili_tid)
+        typ_ueberlagernd_flaeche.t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        'ch.Laermemfindlichkeitsstufen' AS thema,
+        CAST(NULL AS text) AS subthema,
+        ueberlagernd_flaeche.rechtsstatus,
+        ueberlagernd_flaeche.publiziertab,
+        darstellungsdienst.t_id AS darstellungsdienst,
+        amt.t_id AS zustaendigestelle,
+        -- legendeneintrag Attribute
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS legendeneintrag_t_id,
+        decode('iVBORw0KGgoAAAANSUhEUgAAAEYAAAAjCAYAAAApF3xtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAD8AAAA/AB2OVKxAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAOoSURBVGiB7ZpfaM1hGMc/PzvGjFLDzGwixVD+xOnsQmOrlcTGldquFq2RzJ+yG5KUpYw0t65WxtXcUGwXXJhIys1xQZSNkWSOzUp6XDzO3vM6e4/fjB3yfuvtfd7v+zzv+zvfnvfP+Z0TCAgeaZiS7Qf4W+GFcSBitYqKIBbL0qNkGffuwevXpi0go6WmRv5b1NRIqhZ+KTnghXHAC+OAF8YBL4wDXhgH3MK8fAnr19tlwwbYtg3a2+HzZ+P76JHxOXvWHqe2VvnNmw0XiylXWQmJhO1//rwZ6+pV5To6DHfxou3/4QNs2qR9Gzcqd+uW8T9xwvY/dsz0dXe7lXHeY+Jx61xPK2VlIm/fqm9Pj+H37bPvB4sWKZ+fb7ggMP4tLYZ//lwkL8/0tbUp39pquPx8kb4+E9PcbPqmTVNuaEikoEC5mTNFEgnlBwc1HkTmzhUZHp7gPWbFCmhthePHYdky5eJxaGkJFZ4R587Bs2dqHzliZ+JYGBoy88bj6RkEMGMGNDaq/ekTXLmidmenxgM0NUFennueUBmzc6fhX70SiUSULymZeMaASG2tPUamjAGN7+0Vqa62+WTGiIj094vk5ipfXq5cNKrt6dNF3ryxn3PCN9+iIi0A79+PO9xCEGjd1QV1dTaXKUYEduyAmzfdMQsWwK5davf2wuXLcP++tuvrYd68jNP82qk05TcdZsuX6wYMMDCg4yaXgAtNTSrEwIC2q6thyZKxfQ8eNPbu3VoHgc07kP3juq0NcnLUbmiAdesy+0ejJrsikfRTMBVr1hjhh4e13rJF98yfIPvCrF4Ne/dCaSmcOhUu5vRpKC6Gw4dh1arMvj9mx6FDoaaI/NxlEnDhgpawWLgQ+vrC+W7dCrNm6X1pzhyoqgoV9msZkzzykntNbq7p+/LF9k22U30mE0GgSw5g6tTQYeMX5to1ePdO7dJSrRcvNifDnTswMqL248fmrdjSpeOeKpsIt5R6evQKnUjA06eGT+70xcW6qV2/Dk+eQFkZrFwJt2/r0QqwZ89vfvQ/i3DCDA7Cw4emnZOjG9+BA4a7dEm/Rz14AC9eaAHNpP37jYj/CNzCzJ+vXwNSEQTKV1VplqSisBDu3oUbNzRTPn5Un+3bYe1a2/fMGfj6dexLVixm5q2o0Lqy0nDRaHrM0aN62XTtYydP6r44e7bz46bBvwz/Dv8yPBy8MA54YRzwwjjghXEgsP4G4n+7Hm3awniMwi8lB7wwDnwD/bFRBvNxDWsAAAAASUVORK5CYII=', 'base64') AS symbolflaeche,
+        CAST(NULL AS bytea) as symbollinie,
+        CAST(NULL AS bytea) as symbolpunkt,
+        typ_ueberlagernd_flaeche.bezeichnung AS legendetext_de,
+        typ_ueberlagernd_flaeche.code_kommunal AS artcode,
+        'urn:fdc:ilismeta.interlis.ch:2017:NP_Typ_Kanton_Ueberlagernd_Flaeche.'||typ_ueberlagernd_flaeche.t_datasetname AS artcodeliste
+    FROM
+        arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche AS typ_ueberlagernd_flaeche
+        LEFT JOIN arp_npl_oereb.amt_amt AS amt
+        ON typ_ueberlagernd_flaeche.t_datasetname = RIGHT(amt.t_ili_tid, 4)
+        LEFT JOIN arp_npl.nutzungsplanung_ueberlagernd_flaeche AS ueberlagernd_flaeche
+        ON typ_ueberlagernd_flaeche.t_id = ueberlagernd_flaeche.typ_ueberlagernd_flaeche,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+        LEFT JOIN darstellungsdienst
+        ON darstellungsdienst.atext ILIKE '%ch.Laermemfindlichkeitsstufen%'
+    WHERE
+        (
+            typ_kt IN 
+            (
+                'N680_Empfindlichkeitsstufe_I',
+                'N681_Empfindlichkeitsstufe_II',
+                'N682_Empfindlichkeitsstufe_II_aufgestuft',
+                'N683_Empfindlichkeitsstufe_III',
+                'N684_Empfindlichkeitsstufe_III_aufgestuft',
+                'N685_Empfindlichkeitsstufe_IV',
+                'N686_keine_Empfindlichkeitsstufe'
+            )
+            OR
+            (
+                typ_kt = 'N599_weitere_ueberlagernde_Nutzungszonen' AND verbindlichkeit = 'Nutzungsplanfestlegung'
+            ) 
+        )   
+        AND
+        typ_ueberlagernd_flaeche.t_id IN 
+        (
+            SELECT
+                DISTINCT ON (typ_ueberlagernd_flaeche) 
+                typ_ueberlagernd_flaeche
+            FROM
+                arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche_dokument AS typ_ueberlagernd_flaeche_dokument
+                LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+                ON dokument.t_id = typ_ueberlagernd_flaeche_dokument.dokument
+            WHERE
+                dokument.rechtsstatus = 'inKraft'        
+        )  
+        AND
+        ueberlagernd_flaeche.publiziertab IS NOT NULL
+        AND
+        ueberlagernd_flaeche.rechtsstatus = 'inKraft'
 )
 ,
 legendeneintrag_insert AS 
@@ -315,6 +817,14 @@ INSERT INTO
         eigentumsbeschraenkung_legendeneintrag
 ;
 
+/*
+ * Update (Korrektur) der zuständigen Stellen.
+ * 
+ * Die zuständige Stelle einiger Typen ist nicht die Gemeinden, sondern ein
+ * kantonales Amt (ARP oder AVT). Der Einfachheithalber wird zuerst alles
+ * der Gemeinde zugewissen (obere Query). Mit einem Update werden den 
+ * einzelnen Typen die korrekte zuständige Stelle zugewiesen.
+ */
 
 
 
@@ -489,32 +999,32 @@ INSERT INTO
 --                 dataset.datasetname = 'ch.so.arp.nutzungsplanung'
 --         ) AS basket_dataset
 --     WHERE
---         (
---             typ_kt IN 
---             (
---                 'N510_ueberlagernde_Ortsbildschutzzone',
---                 'N523_Landschaftsschutzzone',
---                 'N526_kantonale_Landwirtschafts_und_Schutzzone_Witi',
---                 'N527_kantonale_Uferschutzzone',
---                 'N528_kommunale_Uferschutzzone_ausserhalb_Bauzonen',
---                 'N529_weitere_Schutzzonen_fuer_Lebensraeume_und_Landschaften',
---                 'N590_Hofstattzone_Freihaltezone',
---                 'N591_Bauliche_Einschraenkungen',
---                 'N690_kantonales_Vorranggebiet_Natur_und_Landschaft',
---                 'N691_kommunales_Vorranggebiet_Natur_und_Landschaft',
---                 'N692_Planungszone',
---                 'N699_weitere_flaechenbezogene_Festlegungen_NP',
---                 'N812_geologisches_Objekt',
---                 'N813_Naturobjekt',
---                 'N822_schuetzenswertes_Kulturobjekt',
---                 'N823_erhaltenswertes_Kulturobjekt'
---             )
---             OR
---             (
---                 typ_kt = 'N599_weitere_ueberlagernde_Nutzungszonen' AND verbindlichkeit = 'Nutzungsplanfestlegung'
+    --     (
+    --         typ_kt IN 
+    --         (
+    --             'N510_ueberlagernde_Ortsbildschutzzone',
+    --             'N523_Landschaftsschutzzone',
+    --             'N526_kantonale_Landwirtschafts_und_Schutzzone_Witi',
+    --             'N527_kantonale_Uferschutzzone',
+    --             'N528_kommunale_Uferschutzzone_ausserhalb_Bauzonen',
+    --             'N529_weitere_Schutzzonen_fuer_Lebensraeume_und_Landschaften',
+    --             'N590_Hofstattzone_Freihaltezone',
+    --             'N591_Bauliche_Einschraenkungen',
+    --             'N690_kantonales_Vorranggebiet_Natur_und_Landschaft',
+    --             'N691_kommunales_Vorranggebiet_Natur_und_Landschaft',
+    --             'N692_Planungszone',
+    --             'N699_weitere_flaechenbezogene_Festlegungen_NP',
+    --             'N812_geologisches_Objekt',
+    --             'N813_Naturobjekt',
+    --             'N822_schuetzenswertes_Kulturobjekt',
+    --             'N823_erhaltenswertes_Kulturobjekt'
+    --         )
+    --         OR
+    --         (
+    --             typ_kt = 'N599_weitere_ueberlagernde_Nutzungszonen' AND verbindlichkeit = 'Nutzungsplanfestlegung'
     
---             ) 
---        )     
+    --         ) 
+    --    )     
 --         AND
 --         typ_ueberlagernd_flaeche.t_id IN 
 --         (
