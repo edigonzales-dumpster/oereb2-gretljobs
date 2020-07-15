@@ -820,13 +820,67 @@ INSERT INTO
 /*
  * Update (Korrektur) der zuständigen Stellen.
  * 
- * Die zuständige Stelle einiger Typen ist nicht die Gemeinden, sondern ein
+ * Die zuständige Stelle einiger Typen ist nicht die Gemeinde, sondern ein
  * kantonales Amt (ARP oder AVT). Der Einfachheithalber wird zuerst alles
  * der Gemeinde zugewissen (obere Query). Mit einem Update werden den 
  * einzelnen Typen die korrekte zuständige Stelle zugewiesen.
  */
 
+WITH eigentumsbeschraenkung_legendeneintrag AS 
+(
+    SELECT 
+        eigentumsbeschraenkung.t_id
+    FROM 
+        arp_npl_oereb.transferstruktur_eigentumsbeschraenkung AS eigentumsbeschraenkung
+        LEFT JOIN arp_npl_oereb.transferstruktur_legendeeintrag AS legendeeintrag
+        ON legendeeintrag.t_id = eigentumsbeschraenkung.legende 
+    WHERE 
+        substring(legendeeintrag.artcode, 1, 3) IN ('526', '527', '610', '690')
+)
+UPDATE 
+    arp_npl_oereb.transferstruktur_eigentumsbeschraenkung
+SET
+    zustaendigestelle = subquery.t_id
+FROM
+(
+    SELECT 
+        t_id 
+    FROM 
+        arp_npl_oereb.amt_amt
+    WHERE
+        t_ili_tid = 'ch.so.arp'
+) AS subquery
+WHERE
+    transferstruktur_eigentumsbeschraenkung.t_id IN (SELECT t_id FROM eigentumsbeschraenkung_legendeneintrag)
+;
 
+WITH eigentumsbeschraenkung_legendeneintrag AS 
+(
+    SELECT 
+        eigentumsbeschraenkung.t_id
+    FROM 
+        arp_npl_oereb.transferstruktur_eigentumsbeschraenkung AS eigentumsbeschraenkung
+        LEFT JOIN arp_npl_oereb.transferstruktur_legendeeintrag AS legendeeintrag
+        ON legendeeintrag.t_id = eigentumsbeschraenkung.legende 
+    WHERE 
+        substring(legendeeintrag.artcode, 1, 3) IN ('711', '712', '713', '714', '715', '719')
+)
+UPDATE 
+    arp_npl_oereb.transferstruktur_eigentumsbeschraenkung
+SET
+    zustaendigestelle = subquery.t_id
+FROM
+(
+    SELECT 
+        t_id 
+    FROM 
+        arp_npl_oereb.amt_amt
+    WHERE
+        t_ili_tid = 'ch.so.avt'
+) AS subquery
+WHERE
+    transferstruktur_eigentumsbeschraenkung.t_id IN (SELECT t_id FROM eigentumsbeschraenkung_legendeneintrag)
+;
 
 
 
