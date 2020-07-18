@@ -882,6 +882,561 @@ WHERE
     transferstruktur_eigentumsbeschraenkung.t_id IN (SELECT t_id FROM eigentumsbeschraenkung_legendeneintrag)
 ;
 
+/*
+ * Es werden die Dokumente der ersten Hierarchie-Ebene ("direkt verlinkt") abgehandelt, d.h.
+ * "HinweisWeitere"-Dokumente werden in einem weiteren Schritt bearbeitet. Um die Dokumente
+ * zu kopieren, muss auch die n-m-Zwischentabelle bearbeitet werden, wegen der
+ * Foreign Keys Constraints. Bemerkungen:
+ * 
+ * (1)  In den Ausgangsdaten müssen die Attribute Abkuerzung und Rechtsvorschrift zwingend 
+ * gesetzt sein, sonst kann nicht korrekt umgebaut werden. 
+ * 
+ * (2) Relativ mühsam ist der Umstand, dass bereits Daten in der Dokumenten-
+ * Tabelle vorhanden sind (die kantonalen Gesetze). Deren Primary Keys hat
+ * man nicht im Griff und so kann es vorkommen, dass es zu einer Kollision
+ * mit den zu kopierenden Daten kommt. Abhilfe schafft beim Erstellen des
+ * Staging-Schemas der Parameter --idSeqMin. Damit kann der Startwert der
+ * Sequenz gesetzt werden, um solche Kollisionen mit grösster Wahrscheinlichkeit
+ * zu verhindern.
+ * 
+ * (3) Die t_ili_tid kann nicht einfach so aus der Quelltabelle übernommen werden,
+ * da sie keine valide OID ist (die gemäss Modell verlangt wird). Gemäss Kommentar
+ * sollte sie zudem wie eine Domain aufgebaut sein. Der Einfachheit halber (Referenzen
+ * gibt es ja in der DB darauf nicht, sondern auf den PK) mache ich aus der UUID eine
+ * valide OID mittels Substring, Replace und Concat.
+ * 
+ * (4) Es gibt Objekte (Typen), die in den Kataster aufgenommen werden müssen (gemäss
+ * Excelliste) aber keine Dokumente zugewiesen haben. -> Datenfehler. Aus diesem Grund
+ * wird eine Where-Clause verwendet (dokument.t_id IS NOT NULL). 
+ * 2019-08-03 / sz: Wieder entfernt, da man diese Daten bereits ganz zu Beginn (erste 
+ * Query) rausfiltern muss.
+ * 
+ * (5) In der 'hinweisvorschrift'-Query werden nur diejenigen Dokumente verwendet, die
+ * inKraft sind. Durch den RIGHT JOIN in der Query 'vorschriften_dokument' werden
+ * dann ebenfalls nur die Dokumente selektiert, die inKraft sind. Ein weiterer Filter
+ * ist hier unnötig.
+ */
+
+WITH basket_dataset AS 
+(
+    SELECT
+        basket.t_id AS basket_t_id,
+        dataset.datasetname AS datasetname               
+    FROM
+        arp_npl_oereb.t_ili2db_dataset AS dataset
+        LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+        ON basket.dataset = dataset.t_id
+    WHERE
+        dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+)
+,
+hinweisvorschrift AS 
+(
+    SELECT
+        t_typ_dokument.t_id,
+        basket_dataset.basket_t_id AS t_basket,
+        basket_dataset.datasetname AS t_datasetname,        
+        t_typ_dokument.eigentumsbeschraenkung,
+        t_typ_dokument.vorschrift_vorschriften_dokument
+    FROM
+    (
+        -- Grundnutzung
+        SELECT
+            typ_dokument.t_id,
+            typ_dokument.typ_grundnutzung AS eigentumsbeschraenkung,
+            typ_dokument.dokument AS vorschrift_vorschriften_dokument
+        FROM
+            arp_npl.nutzungsplanung_typ_grundnutzung_dokument AS typ_dokument
+            LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+            ON dokument.t_id = typ_dokument.dokument
+        WHERE
+            dokument.rechtsstatus = 'inKraft'
+            
+        UNION ALL
+        
+        -- Überlagernd (Fläche) + Sondernutzungspläne + Lärmempfindlichkeitsstufen 
+        SELECT
+            typ_dokument.t_id,
+            typ_dokument.typ_ueberlagernd_flaeche AS eigentumsbeschraenkung,
+            typ_dokument.dokument AS vorschrift_vorschriften_dokument
+        FROM
+            arp_npl.nutzungsplanung_typ_ueberlagernd_flaeche_dokument AS typ_dokument
+            LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+            ON dokument.t_id = typ_dokument.dokument
+        WHERE
+            dokument.rechtsstatus = 'inKraft'
+
+        UNION ALL
+        
+        -- Überlagernd (Linie)        
+        SELECT
+            typ_dokument.t_id,
+            typ_dokument.typ_ueberlagernd_linie AS eigentumsbeschraenkung,
+            typ_dokument.dokument AS vorschrift_vorschriften_dokument
+        FROM
+            arp_npl.nutzungsplanung_typ_ueberlagernd_linie_dokument AS typ_dokument
+            LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+            ON dokument.t_id = typ_dokument.dokument
+        WHERE
+            dokument.rechtsstatus = 'inKraft'
+
+        UNION ALL
+
+        -- Überlagernd (Punkt)        
+        SELECT
+            typ_dokument.t_id,
+            typ_dokument.typ_ueberlagernd_punkt AS eigentumsbeschraenkung,
+            typ_dokument.dokument AS vorschrift_vorschriften_dokument
+        FROM
+            arp_npl.nutzungsplanung_typ_ueberlagernd_punkt_dokument AS typ_dokument
+            LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+            ON dokument.t_id = typ_dokument.dokument
+        WHERE
+            dokument.rechtsstatus = 'inKraft'
+
+        UNION ALL
+
+        -- Baulinien + Waldabstandslinien
+        SELECT
+            typ_dokument.t_id,
+            typ_dokument.typ_erschliessung_linienobjekt AS eigentumsbeschraenkung,
+            typ_dokument.dokument AS vorschrift_vorschriften_dokument
+        FROM
+            arp_npl.erschlssngsplnung_typ_erschliessung_linienobjekt_dokument AS typ_dokument
+            LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+            ON dokument.t_id = typ_dokument.dokument
+        WHERE
+            dokument.rechtsstatus = 'inKraft'
+    ) AS t_typ_dokument
+    RIGHT JOIN arp_npl_oereb.transferstruktur_eigentumsbeschraenkung AS eigentumsbeschraenkung
+    ON t_typ_dokument.eigentumsbeschraenkung = eigentumsbeschraenkung.t_id,
+    basket_dataset
+)
+,
+vorschriften_dokument AS
+(
+    INSERT INTO 
+        arp_npl_oereb.vorschriften_dokument
+        (
+            t_id,
+            t_basket,
+            t_datasetname,
+            t_ili_tid,
+            typ,            
+            titel_de,
+            abkuerzung_de,
+            offiziellenr,
+            kanton,
+            gemeinde,
+            rechtsstatus,
+            publiziertab,
+            zustaendigestelle
+        )   
+    SELECT 
+        DISTINCT ON (dokument.t_id)
+        dokument.t_id AS t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        '_'||SUBSTRING(REPLACE(CAST(dokument.t_ili_tid AS text), '-', ''),1,15) AS t_ili_tid,
+        CASE
+            WHEN rechtsvorschrift IS FALSE
+                THEN 'Hinweis'
+            ELSE 'Rechtsvorschrift'
+        END AS typ,
+        COALESCE(dokument.titel || ' - ' || dokument.offiziellertitel, dokument.titel) AS titel_de,
+        dokument.abkuerzung AS abkuerzung_de,
+        dokument.offiziellenr AS offiziellenr,
+        dokument.kanton AS kanton,
+        dokument.gemeinde AS gemeinde,
+        dokument.rechtsstatus AS rechtsstatus,
+        dokument.publiziertab AS publiziertab,
+        CASE
+            WHEN abkuerzung = 'RRB'
+                THEN 
+                (
+                    SELECT 
+                        t_id
+                    FROM
+                        arp_npl_oereb.amt_amt
+                    WHERE
+                        t_datasetname = 'ch.so.agi.zustaendigestellen.oereb'
+                    AND
+                        t_ili_tid = 'ch.so.sk'
+                )
+            ELSE
+                (
+                    SELECT 
+                        t_id
+                    FROM
+                        arp_npl_oereb.amt_amt
+                    WHERE
+                        RIGHT(t_ili_tid, 4) = CAST(gemeinde AS TEXT)
+                )
+         END AS zustaendigestelle
+    FROM
+        arp_npl.rechtsvorschrften_dokument AS dokument
+        RIGHT JOIN hinweisvorschrift
+        ON dokument.t_id = hinweisvorschrift.vorschrift_vorschriften_dokument,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset   
+   RETURNING *
+)
+INSERT INTO
+    arp_npl_oereb.transferstruktur_hinweisvorschrift
+    (
+        t_id,
+        t_basket,
+        t_datasetname,
+        eigentumsbeschraenkung,
+        vorschrift  
+    )
+SELECT
+    t_id, -- TODO: muss nicht zwingend Original-TID sein, oder?
+    t_basket,
+    t_datasetname,
+    eigentumsbeschraenkung,
+    vorschrift_vorschriften_dokument
+FROM
+    hinweisvorschrift
+;
+
+/*
+ * Umbau der zusätzlichen Dokumente, die im Originalmodell in der 
+ * HinweisWeitereDokumente vorkommen und nicht direkt (via Zwischen-
+ * Tabelle) mit der Eigentumsbeschränkung / mit dem Typ verknüpft sind. 
+ * 
+ * (1) Flachwalzen: Anstelle der gnietigen HinweisWeitereDokumente-Tabelle 
+ * kann man alles flachwalzen, d.h. alle Dokument-zu-Dokument-Links werden 
+ * direkt mit an den Typ / an die Eigentumsbeschränkung verlinkt. Dazu muss man 
+ * für jedes Dokument in dieser Schleife das Top-Level-Dokument (das 'wirkliche'
+ * Ursprungs-Dokument) kennen, damit dann auch noch die Verbindungstabelle
+ * (transferstruktur_hinweisvorschrift) zwischen Eigentumsbeschränkung und 
+ * Dokument abgefüllt werden kann.
+ * 
+ * (2) Umbau sehr gut validieren (wegen des Flachwalzens)!
+ * 
+ * (3) Die rekursive CTE muss am Anfang stehen.
+ * 
+ * (4) STIMMT DIESE AUSSAGE NOCH? Achtung: Beim Einfügen der zusätzlichen Dokumente in die Dokumententabelle
+ * kann es Duplikate geben, da zwei verschiedene Top-Level-Dokumente auf das gleiche
+ * weitere Dokument verweisen. Das wirft einen Fehler (Primary Key Constraint). Aus
+ * diesem Grund muss beim Inserten noch ein DISTINCT auf die t_id gemacht werden. 
+ * Beim anschliessenden Herstellen der Verknüpfung aber nicht mehr.
+ * 
+ * (5)  Bei 'zusaetzliche_dokumente AS ..' können Dokumente vorkommen, die bereits aufgrund aus einer 
+ * direkten Verlinkung in einem anderen Thema/Subthemas in der Dokumenten-Tabelle vorhanden sind. 
+ * Diese Duplikaten werden erst beim Inserten gefiltert, da man die trotzdem eine weitere Beziehung
+ * in eines anderen Themas/Subthemas stammen. Das Filtern wird erst beim Insert gemacht, da
+ * man die Beziehung in 'transferstruktur_hinweisvorschrift' einfügen muss. Sonst geht dieses
+ * Wissen verloren. Braucht auch noch einen Filter beim Inserten dieser Beziehung, sonst kommen
+ * ebenfalls die bereits direkt verlinkten.
+ * 
+ * (6) Weil jetzt in der Tabelle 'arp_npl_oereb.vorschriften_dokument' nur noch (vorangehende Query)
+ * die inKraft-Dokumente sind, weiss ich nicht genau, was passiert wenn ein nicht-inKraft-
+ * Dokument irgendwo zwischen zwei inKraft-Dokumenten bei der Rekursion zu liegen kommt.
+ * Ich bin nicht sicher, ob die 'ursprung' und 'hinweis'-Filter im zweiten Teil der
+ * rekursiven Query etwas bewirken.
+ * Müsste man anhand eines einfachen Beispieles ausprobieren.
+ */
+
+WITH RECURSIVE x(ursprung, hinweis, parents, last_ursprung, depth) AS 
+(
+    SELECT 
+        ursprung, 
+        hinweis, 
+        ARRAY[ursprung] AS parents, 
+        ursprung AS last_ursprung, 
+        0 AS "depth" 
+    FROM 
+        arp_npl.rechtsvorschrften_hinweisweiteredokumente
+    WHERE
+        ursprung != hinweis
+    AND ursprung IN 
+    (
+        SELECT
+            t_id
+        FROM
+            arp_npl_oereb.vorschriften_dokument
+        WHERE
+            t_datasetname = 'ch.so.arp.nutzungsplanung'
+    )
+
+    UNION ALL
+  
+    SELECT 
+        x.ursprung, 
+        x.hinweis, 
+        parents||t1.hinweis, 
+        t1.hinweis AS last_ursprung, 
+        x."depth" + 1
+    FROM 
+        x 
+        INNER JOIN arp_npl.rechtsvorschrften_hinweisweiteredokumente t1 
+        ON (last_ursprung = t1.ursprung)
+    WHERE 
+        t1.hinweis IS NOT NULL
+    AND x.ursprung IN 
+    (
+        SELECT
+            t_id
+        FROM
+            arp_npl_oereb.vorschriften_dokument
+        WHERE
+            t_datasetname = 'ch.so.arp.nutzungsplanung'
+    )
+),
+zusaetzliche_dokumente AS 
+(
+    SELECT 
+        DISTINCT ON (x.last_ursprung, x.ursprung)
+        x.ursprung AS top_level_dokument,
+        x.last_ursprung AS t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        '_'||SUBSTRING(REPLACE(CAST(dokument.t_ili_tid AS text), '-', ''),1,15) AS t_ili_tid,
+        CASE
+            WHEN rechtsvorschrift IS FALSE
+                THEN 'Hinweis'
+            ELSE 'Rechtsvorschrift'
+        END AS typ,
+        COALESCE(dokument.titel || ' - ' || dokument.offiziellertitel, dokument.titel) AS titel_de,
+        dokument.abkuerzung AS abkuerzung_de,
+        dokument.offiziellenr AS offiziellenr,
+        dokument.kanton AS kanton,
+        dokument.gemeinde AS gemeinde,
+        dokument.rechtsstatus AS rechtsstatus,
+        dokument.publiziertab AS publiziertab,
+        CASE
+            WHEN abkuerzung = 'RRB'
+                THEN 
+                (
+                    SELECT 
+                        t_id
+                    FROM
+                        arp_npl_oereb.amt_amt
+                    WHERE
+                        t_datasetname = 'ch.so.agi.zustaendigestellen.oereb' 
+                    AND
+                        t_ili_tid = 'ch.so.sk' 
+                )
+            ELSE
+                (
+                    SELECT 
+                        t_id
+                    FROM
+                        arp_npl_oereb.amt_amt
+                    WHERE
+                        RIGHT(t_ili_tid, 4) = CAST(gemeinde AS TEXT)
+                )
+         END AS zustaendigestelle        
+    FROM 
+        x
+        LEFT JOIN arp_npl.rechtsvorschrften_dokument AS dokument
+        ON dokument.t_id = x.last_ursprung,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+)
+,
+zusaetzliche_dokumente_insert AS 
+(
+    INSERT INTO 
+        arp_npl_oereb.vorschriften_dokument
+        (
+            t_id,
+            t_basket,
+            t_datasetname,
+            t_ili_tid,
+            typ,            
+            titel_de,
+            abkuerzung_de,
+            offiziellenr,
+            kanton,
+            gemeinde,
+            rechtsstatus,
+            publiziertab,
+            zustaendigestelle
+        )   
+    SELECT
+        DISTINCT ON (t_id)    
+        t_id,
+        basket_t_id,
+        datasetname,
+        t_ili_tid,
+        typ,        
+        titel_de,
+        abkuerzung_de,
+        offiziellenr,
+        kanton,
+        gemeinde,
+        rechtsstatus,
+        publiziertab,
+        zustaendigestelle
+    FROM
+        zusaetzliche_dokumente
+    WHERE
+        t_id NOT IN 
+        (
+            SELECT
+                t_id
+            FROM
+                arp_npl_oereb.vorschriften_dokument
+            WHERE
+                t_datasetname = 'ch.so.arp.nutzungsplanung'
+        )
+)
+INSERT INTO 
+    arp_npl_oereb.transferstruktur_hinweisvorschrift 
+    (
+        t_basket,
+        t_datasetname,
+        eigentumsbeschraenkung,
+        vorschrift
+    )
+    SELECT 
+        DISTINCT 
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        hinweisvorschrift.eigentumsbeschraenkung,
+        zusaetzliche_dokumente.t_id AS vorschrift_vorschriften_dokument
+    FROM 
+        zusaetzliche_dokumente
+        LEFT JOIN arp_npl_oereb.transferstruktur_hinweisvorschrift AS hinweisvorschrift
+        ON hinweisvorschrift.vorschrift = zusaetzliche_dokumente.top_level_dokument,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+    WHERE
+        NOT EXISTS 
+        (
+            SELECT 
+                eigentumsbeschraenkung, 
+                vorschrift 
+            FROM 
+                arp_npl_oereb.transferstruktur_hinweisvorschrift     
+            WHERE 
+                eigentumsbeschraenkung = hinweisvorschrift.eigentumsbeschraenkung
+                AND
+                vorschrift = zusaetzliche_dokumente.t_id
+        )
+;
+
+/*
+ * Datenumbau der Links auf die Dokumente, die im Rahmenmodell 'multilingual' sind und daher eher
+ * mühsam normalisert sind.
+ * 
+ * (1) Im NPL-Modell sind die URL nicht vollständig, sondern es werden nur Teile des Pfads verwaltet.
+ * Beim Datenumbau in das Rahmenmodell wird daraus eine vollständige URL gemacht.
+ */
+
+WITH multilingualuri AS
+(
+    INSERT INTO
+        arp_npl_oereb.multilingualuri
+        (
+            t_id,
+            t_basket,
+            t_datasetname,
+            t_seq,
+            vorschriften_dokument_textimweb
+        )
+    SELECT
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        0 AS t_seq,
+        vorschriften_dokument.t_id AS vorschriften_dokument_textimweb
+    FROM
+        arp_npl_oereb.vorschriften_dokument AS vorschriften_dokument,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung' 
+        ) AS basket_dataset
+    WHERE
+        vorschriften_dokument.t_datasetname = 'ch.so.arp.nutzungsplanung'
+    RETURNING *
+)
+,
+localiseduri AS 
+(
+    SELECT 
+        nextval('arp_npl_oereb.t_ili2db_seq'::regclass) AS t_id,
+        basket_dataset.basket_t_id,
+        basket_dataset.datasetname,
+        0 AS t_seq,
+        'de' AS alanguage,
+        CAST('https://geo.so.ch/docs/ch.so.arp.zonenplaene/Zonenplaene_pdf/' || COALESCE(rechtsvorschrften_dokument.textimweb, '404.pdf') AS TEXT) AS atext,
+        multilingualuri.t_id AS multilingualuri_localisedtext
+    FROM
+        arp_npl.rechtsvorschrften_dokument AS rechtsvorschrften_dokument
+        RIGHT JOIN multilingualuri 
+        ON multilingualuri.vorschriften_dokument_textimweb = rechtsvorschrften_dokument.t_id,
+        (
+            SELECT
+                basket.t_id AS basket_t_id,
+                dataset.datasetname AS datasetname               
+            FROM
+                arp_npl_oereb.t_ili2db_dataset AS dataset
+                LEFT JOIN arp_npl_oereb.t_ili2db_basket AS basket
+                ON basket.dataset = dataset.t_id
+            WHERE
+                dataset.datasetname = 'ch.so.arp.nutzungsplanung'                 
+        ) AS basket_dataset
+)
+INSERT INTO
+    arp_npl_oereb.localiseduri
+    (
+        t_id,
+        t_basket,
+        t_datasetname,
+        t_seq,
+        alanguage,
+        atext,
+        multilingualuri_localisedtext
+    )
+    SELECT 
+        t_id,
+        basket_t_id,
+        datasetname,
+        t_seq,
+        alanguage,
+        atext,
+        multilingualuri_localisedtext
+    FROM 
+        localiseduri
+;
 
 
 
@@ -1708,7 +2263,7 @@ WHERE
 --  * 
 --  * (3) Die rekursive CTE muss am Anfang stehen.
 --  * 
---  * (4) STIMTT DAS NOCH? Achtung: Beim Einfügen der zusätzlichen Dokumente in die Dokumententabelle
+--  * (4) STIMMT DIESE AUSSAGE NOCH? Achtung: Beim Einfügen der zusätzlichen Dokumente in die Dokumententabelle
 --  * kann es Duplikate geben, da zwei verschiedene Top-Level-Dokumente auf das gleiche
 --  * weitere Dokument verweisen. Das wirft einen Fehler (Primary Key Constraint). Aus
 --  * diesem Grund muss beim Inserten noch ein DISTINCT auf die t_id gemacht werden. 
