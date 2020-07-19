@@ -168,8 +168,8 @@ task deleteCantonalResponsibleOfficesFromOereb(type: Ili2pgDelete, dependsOn: 'd
 
 // Import der vorhin gelöschten Datensätze. Man könnte sich auch überlegen, ob man diese Datensätze 
 // (dazu gehören auch die Bundesgesetze) nicht bereits als gegeben annehmen will. D.h. Bestandteil
-// des Schemas und nicht des Datenumbaus. Das hatte ich
-// mal so gehabt, musste (? warum ?) es aber ändern. Einen Vorteil hat es aber, wenn man es hier 
+// des Schemas und nicht des Datenumbaus. Das hatte ich ganz zu Beginn
+// so gehabt, musste (? warum ?) es aber ändern. Einen Vorteil hat es aber, wenn man es hier 
 // macht: Es gehört eigentlich alles zum Datenumbau. Und somit ist der Datenumbau für alles verantwortlich
 // und kann besser und einfacher auf Änderungen reagieren. Wobei wenn jetzt alles sauber getrennt ist,
 // (EXTERNAL) dürfte es ausser bei der Entwicklung keine Änderungen geben. Die Referenzen müssen
