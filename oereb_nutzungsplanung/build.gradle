@@ -261,36 +261,41 @@ task transferData(type: SqlExecutor, dependsOn: ["importFederalLegalBasisToOereb
 //     }
 // }
 
-// task exportData(type: Ili2pgExport, dependsOn: "updateSymbols") {
-//     description = "Exportiert die umgebauten Daten aus dem Transferschema in ein INTERLIS-Datei."
-//     database = [dbUriEdit, dbUserEdit, dbPwdEdit]
-//     models = iliModelTransferstruktur
-//     dbschema = dbSchemaLandUsePlansOereb
-//     dataFile = "$rootDir/" + xtfFileName
-//     dataset = landUsePlansDataSet
-//     disableValidation = true
-// }
+//task exportData(type: Ili2pgExport, dependsOn: "updateSymbols") {
+task exportData(type: Ili2pgExport, dependsOn: "transferData") {
+    description = "Exportiert die umgebauten Daten aus dem Transferschema in ein INTERLIS-Datei."
+    database = [dbUriEdit, dbUserEdit, dbPwdEdit]
+    models = iliModelTransferstruktur
+    modeldir = "http://models.geo.admin.ch;https://raw.githubusercontent.com/oereb/oereb2-ilirepo/master/"
+    dbschema = dbSchemaLandUsePlansOereb
+    dataFile = "$rootDir/" + xtfFileName
+    dataset = landUsePlansDataSet
+    disableValidation = true
+}
 
-// task replaceWmsServer(dependsOn: "exportData") {
-//     description = "Ersetzt verschiedene Elemente (Host, Pfad, etc.) der WMS-Requests (GetMap und GetLegendGraphic)."
-//     doLast {
-//         ant.replace(
-//         file: "$rootDir/" + xtfFileName,
-//         token: '${wmsHost}',
-//         value: 'https://' + geoservicesHostName,
-//         encoding: 'UTF-8')
-//     }
-// }
+task replaceWmsServer(dependsOn: "exportData") {
+    description = "Ersetzt verschiedene Elemente (Host, Pfad, etc.) der WMS-Requests (GetMap und GetLegendGraphic)."
+    doLast {
+        ant.replace(
+        file: "$rootDir/" + xtfFileName,
+        token: '${wmsHost}',
+        value: 'https://' + geoservicesHostName,
+        encoding: 'UTF-8')
+    }
+}
 
-// task validateData(type: IliValidator, dependsOn: "replaceWmsServer") {
-//     description = "Validiert die exportierten Daten in der Transferstruktur inkl. der externen Beziehungen."
-//     dataFiles = [file(Paths.get(pathToTempFolder.toString(), federalLegalBaseDataSet + ".xml")), 
-//         file(Paths.get(pathToTempFolder.toString(), cantonalLegalBaseDataSet + ".xtf")), 
-//         file(Paths.get("$rootDir/" + xtfFileName))]
-//     logFile = "ilivalidator.log"
-//     allObjectsAccessible = true
-//     configFile = "validateData.toml"
-// }
+//java -jar /Users/stefan/apps/ilivalidator-1.11.6/ilivalidator-1.11.6.jar --modeldir "http://models.geo.admin.ch;https://raw.githubusercontent.com/oereb/oereb2-ilirepo/master/" --allObjectsAccessible ch.so.agi.zustaendigestellen.oereb2.xtf ch.so.arp.nutzungsplanung.oereb.xtf
+task validateData(type: IliValidator, dependsOn: "replaceWmsServer") {
+    description = "Validiert die exportierten Daten in der Transferstruktur inkl. der externen Beziehungen."
+    dataFiles = [
+        file(Paths.get(pathToTempFolder.toString(), cantonalResponsibleOfficesDataSet + ".xtf")), 
+        file(Paths.get("$rootDir/" + xtfFileName))
+        ]
+    modeldir = "http://models.geo.admin.ch;https://raw.githubusercontent.com/oereb/oereb2-ilirepo/master/"
+    logFile = "ilivalidator.log"
+    allObjectsAccessible = true
+    //configFile = "validateData.toml"
+}
 
 // task importDataToStage(type: Ili2pgReplace, dependsOn: "validateData") {
 // //task importDataToStage(type: Ili2pgReplace, dependsOn: "replaceWmsServer") {

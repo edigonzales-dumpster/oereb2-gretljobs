@@ -28,7 +28,7 @@ export ORG_GRADLE_PROJECT_dbPwdEdit="gretl"
 export ORG_GRADLE_PROJECT_dbUriOereb="jdbc:postgresql://oereb-db/oereb"
 export ORG_GRADLE_PROJECT_dbUserOereb="gretl"
 export ORG_GRADLE_PROJECT_dbPwdOereb="gretl"
-export ORG_GRADLE_PROJECT_geoservicesHostName="geo-t.so.ch"
+export ORG_GRADLE_PROJECT_geoservicesHostName="geo.so.ch"
 ```
 
 Start the GRETL job
@@ -37,5 +37,5 @@ find out the names of your Docker networks by running `docker network ls`):
 ```
 ./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_nutzungsplanung/ ....
 ./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_nutzungsplanung/ deleteFromOereb
-./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_nutzungsplanung/ ....
+./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_nutzungsplanung/ transferData
 ```
