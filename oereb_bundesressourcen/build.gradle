@@ -1,0 +1,147 @@
+import ch.so.agi.gretl.api.TransferSet
+import ch.so.agi.gretl.tasks.*
+import java.nio.file.Paths
+import de.undercouch.gradle.tasks.download.Download
+
+apply plugin: "de.undercouch.download"
+apply plugin: "ch.so.agi.gretl"
+
+defaultTasks "dbImport"
+
+// Download-Verzeichnis
+def pathToTempFolder = System.getProperty("java.io.tmpdir")
+
+// Oereb-DB Schemas
+//def dbSchemas = ["stage", "live"]
+def dbSchemas = ["live"]
+
+def iliModelBasisdefinitionen = "OeREBKRM_V2_0"
+def iliModelVorschriften = "OeREBKRMvs_V2_0"
+def iliModelKonfiguration = "OeREBKRMkvs_V2_0"
+def iliModelTransferstruktur = "OeREBKRMtrsfr_V2_0"
+
+def federalLegalBasisBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def federalLegalBaseDataSet = "OeREBKRM_V2_0_Gesetze"
+
+def federalThemesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def federalThemesDataSet = "OeREBKRM_V2_0_Themen"
+
+def federalLogosBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def federalLogosDataSet = "OeREBKRM_V2_0_Logos"
+
+def federalTextBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def federalTextDataSet = "OeREBKRM_V2_0_Texte"
+
+def GROUP = "Bundesressourcen-Import"
+
+// Bundesgesetze
+task downloadFederalLegalBasis(type: Download) {
+    group = GROUP
+    description = "Download Bundesgesetze (inkl. zuständige Stelle)"
+    src federalLegalBasisBaseUrl + federalLegalBaseDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true
+}
+
+dbSchemas.each { dbSchema ->
+    task "importFederalLegalBasis_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalLegalBasis") {
+        group = GROUP
+        description = "Import Bundesgesetze (inkl. zuständige Stelle)."
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = federalLegalBaseDataSet
+        models = iliModelVorschriften
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), federalLegalBaseDataSet + ".xml"))
+    }
+}
+
+// Bundesthemen
+task downloadFederalThemes(type: Download) {
+    group = GROUP
+    description = "Download Bundesthemen."
+    src federalThemesBaseUrl + federalThemesDataSet + ".xml"
+    dest pathToTempFolder
+    over
+    write true      
+}
+
+task downloadFederalThemes.dependsOn {
+    tasks.findAll { task -> task.name.startsWith("importFederalLegalBasis_") }
+}
+
+dbSchemas.each { dbSchema ->
+    task "importFederalThemes_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalThemes") {
+        group = GROUP
+        description = "Import Bundesthemen."
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = federalThemesDataSet
+        models = iliModelKonfiguration
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), federalThemesDataSet + ".xml"))
+    }
+}
+
+// Bundeslogos
+task downloadFederalLogos(type: Download) {
+    description = "Download Bundeslogos."
+    src federalLogosBaseUrl + federalLogosDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+task downloadFederalLogos.dependsOn {
+    tasks.findAll { task -> task.name.startsWith("importFederalThemes_") }
+}
+
+dbSchemas.each { dbSchema ->
+    task "importFederalLogos_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalLogos") {
+        group = GROUP
+        description = "Import Bundeslogos."
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = federalLogosDataSet
+        models = iliModelKonfiguration
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), federalLogosDataSet + ".xml"))
+    }
+}
+
+// Bundestexte
+task downloadFederalText(type: Download) {
+    description = "Download Bundestexte."
+    src federalTextBaseUrl + federalTextDataSet + ".xml"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+task downloadFederalText.dependsOn {
+    tasks.findAll { task -> task.name.startsWith("importFederalLogos_") }
+}
+
+dbSchemas.each { dbSchema ->
+    task "importFederalText_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalText") {
+        group = GROUP
+        description = "Import Bundestexte."
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = federalTextDataSet
+        models = iliModelKonfiguration
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), federalTextDataSet + ".xml"))
+    }
+}
+
+// Aggregationstask
+task dbImport() {
+    group = GROUP
+    description = "Aggregation task."
+    dependsOn {
+        tasks.findAll { task -> task.name.startsWith('importFederalText_') }
+    }    
+    
+    doLast {
+        println "Data import into db finished."
+    }
+}
