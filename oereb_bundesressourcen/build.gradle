@@ -37,7 +37,7 @@ def GROUP = "Bundesressourcen-Import"
 // Bundesgesetze
 task downloadFederalLegalBasis(type: Download) {
     group = GROUP
-    description = "Download Bundesgesetze (inkl. zuständige Stelle)"
+    description = "Download Bundesgesetze (inkl zustaendige Stelle)"
     src federalLegalBasisBaseUrl + federalLegalBaseDataSet + ".xml"
     dest pathToTempFolder
     overwrite true
@@ -46,7 +46,7 @@ task downloadFederalLegalBasis(type: Download) {
 dbSchemas.each { dbSchema ->
     task "importFederalLegalBasis_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalLegalBasis") {
         group = GROUP
-        description = "Import Bundesgesetze (inkl. zuständige Stelle)."
+        description = "Import Bundesgesetze (inkl zustaendige Stelle)"
         database = [dbUriOereb, dbUserOereb, dbPwdOereb]
         dbschema = dbSchema
         dataset = federalLegalBaseDataSet
@@ -59,21 +59,20 @@ dbSchemas.each { dbSchema ->
 // Bundesthemen
 task downloadFederalThemes(type: Download) {
     group = GROUP
-    description = "Download Bundesthemen."
+    description = "Download Bundesthemen"
     src federalThemesBaseUrl + federalThemesDataSet + ".xml"
     dest pathToTempFolder
-    over
-    write true      
+    overwrite true
 }
 
-task downloadFederalThemes.dependsOn {
+downloadFederalThemes.dependsOn {
     tasks.findAll { task -> task.name.startsWith("importFederalLegalBasis_") }
 }
 
 dbSchemas.each { dbSchema ->
     task "importFederalThemes_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalThemes") {
         group = GROUP
-        description = "Import Bundesthemen."
+        description = "Import Bundesthemen"
         database = [dbUriOereb, dbUserOereb, dbPwdOereb]
         dbschema = dbSchema
         dataset = federalThemesDataSet
@@ -85,20 +84,21 @@ dbSchemas.each { dbSchema ->
 
 // Bundeslogos
 task downloadFederalLogos(type: Download) {
-    description = "Download Bundeslogos."
+    group = GROUP
+    description = "Download Bundeslogos"
     src federalLogosBaseUrl + federalLogosDataSet + ".xml"
     dest pathToTempFolder
     overwrite true      
 }
 
-task downloadFederalLogos.dependsOn {
+downloadFederalLogos.dependsOn {
     tasks.findAll { task -> task.name.startsWith("importFederalThemes_") }
 }
 
 dbSchemas.each { dbSchema ->
     task "importFederalLogos_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalLogos") {
         group = GROUP
-        description = "Import Bundeslogos."
+        description = "Import Bundeslogos"
         database = [dbUriOereb, dbUserOereb, dbPwdOereb]
         dbschema = dbSchema
         dataset = federalLogosDataSet
@@ -110,20 +110,21 @@ dbSchemas.each { dbSchema ->
 
 // Bundestexte
 task downloadFederalText(type: Download) {
-    description = "Download Bundestexte."
+    group = GROUP    
+    description = "Download Bundestexte"
     src federalTextBaseUrl + federalTextDataSet + ".xml"
     dest pathToTempFolder
     overwrite true      
 }
 
-task downloadFederalText.dependsOn {
+downloadFederalText.dependsOn {
     tasks.findAll { task -> task.name.startsWith("importFederalLogos_") }
 }
 
 dbSchemas.each { dbSchema ->
     task "importFederalText_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadFederalText") {
         group = GROUP
-        description = "Import Bundestexte."
+        description = "Import Bundestexte"
         database = [dbUriOereb, dbUserOereb, dbPwdOereb]
         dbschema = dbSchema
         dataset = federalTextDataSet
@@ -136,7 +137,7 @@ dbSchemas.each { dbSchema ->
 // Aggregationstask
 task dbImport() {
     group = GROUP
-    description = "Aggregation task."
+    description = "Aggregation task"
     dependsOn {
         tasks.findAll { task -> task.name.startsWith('importFederalText_') }
     }    
