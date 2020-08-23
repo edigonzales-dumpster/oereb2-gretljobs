@@ -1,0 +1,57 @@
+import ch.so.agi.gretl.tasks.*
+import java.nio.file.Paths
+import de.undercouch.gradle.tasks.download.Download
+
+apply plugin: "de.undercouch.download"
+apply plugin: "ch.so.agi.gretl"
+
+defaultTasks "dbImport"
+
+// Download-Verzeichnis
+def pathToTempFolder = System.getProperty("java.io.tmpdir")
+
+// Oereb-DB Schemas
+//def dbSchemas = ["stage", "live"]
+def dbSchemas = ["live"]
+
+def iliModelKonfiguration = "OeREBKRMkvs_V2_0"
+
+def municipalitiesWithOerebBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def municipalitiesWithOerebDataSet = "ch.so.agi.gemeinden.oereb2"
+
+def GROUP = "Gemeinden-mit-Oereb-Import"
+
+// Gemeinden mit OEREB
+task downloadMunicipalitiesWithOereb(type: Download) {
+    group = GROUP
+    description = "Download zuständige Stellen"
+    src municipalitiesWithOerebBaseUrl + municipalitiesWithOerebDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true
+}
+
+dbSchemas.each { dbSchema ->
+    task "importMunicipalitiesWithOereb_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadMunicipalitiesWithOereb") {
+        group = GROUP
+        description = "Import Gemeinden mit ÖREB"
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = municipalitiesWithOerebDataSet
+        models = iliModelKonfiguration
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), municipalitiesWithOerebDataSet + ".xtf"))
+    }
+}
+
+// Aggregationstask
+task dbImport() {
+    group = GROUP
+    description = "Aggregation task"
+    dependsOn {
+        tasks.findAll { task -> task.name.startsWith('importMunicipalitiesWithOereb_') }
+    }    
+    
+    doLast {
+        println "Data import into db finished."
+    }
+}

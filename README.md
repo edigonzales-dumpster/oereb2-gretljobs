@@ -44,4 +44,5 @@ find out the names of your Docker networks by running `docker network ls`):
 ./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_plzo/ tasks --all
 ./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_av/ tasks --all
 ./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_kantonsressourcen/ tasks --all
+./start-gretl.sh --docker-image sogis/gretl-runtime:latest --docker-network oereb2-gretljobs_default --job-directory $PWD/oereb_gemeinden_mit_oereb/ tasks --all
 ```
