@@ -1,0 +1,150 @@
+import ch.so.agi.gretl.tasks.*
+import java.nio.file.Paths
+import de.undercouch.gradle.tasks.download.Download
+
+apply plugin: "de.undercouch.download"
+apply plugin: "ch.so.agi.gretl"
+
+defaultTasks "dbImport"
+
+// Download-Verzeichnis
+def pathToTempFolder = System.getProperty("java.io.tmpdir")
+
+// Oereb-DB Schemas
+//def dbSchemas = ["stage", "live"]
+def dbSchemas = ["live"]
+
+def iliModelBasisdefinitionen = "OeREBKRM_V2_0"
+def iliModelVorschriften = "OeREBKRMvs_V2_0"
+def iliModelKonfiguration = "OeREBKRMkvs_V2_0"
+def iliModelTransferstruktur = "OeREBKRMtrsfr_V2_0"
+
+def cantonalResponsibleOfficesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def cantonalResponsibleOfficesDataSet = "ch.so.agi.zustaendigestellen.oereb2"
+
+def cantonalLegalBasisBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def cantonalLegalBaseDataSet = "ch.so.sk.gesetze.oereb2"
+
+def cantonalThemesBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def cantonalThemesDataSet = "ch.so.agi.themen.oereb2"
+
+def cantonalConfigurationBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def cantonalConfigurationDataSet = "ch.so.agi.konfiguration.oereb2"
+
+def cantonalTextBaseUrl = "https://raw.githubusercontent.com/oereb/oereb2-data/master/"
+def cantonalTextDataSet = "NOT_YET_IMPLEMENTED"
+
+def GROUP = "Kantonsressourcen-Import"
+
+// Kantonale und kommunale zuständige Stellen / Ämter
+task downloadCantonalResponsibleOffices(type: Download) {
+    group = GROUP
+    description = "Download zuständige Stellen"
+    src cantonalResponsibleOfficesBaseUrl + cantonalResponsibleOfficesDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true
+}
+
+dbSchemas.each { dbSchema ->
+    task "importCantonalResponsibleOffices_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadCantonalResponsibleOffices") {
+        group = GROUP
+        description = "Import zuständige Stellen"
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = cantonalResponsibleOfficesDataSet
+        models = iliModelBasisdefinitionen
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalResponsibleOfficesDataSet + ".xtf"))
+    }
+}
+
+// Kantonale Gesetze und Verordnungen
+task downloadCantonalLegalBasis(type: Download) {
+    group = GROUP
+    description = "Download Bundesgesetze"
+    src cantonalLegalBasisBaseUrl + cantonalLegalBaseDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true
+}
+
+downloadCantonalLegalBasis.dependsOn {
+    tasks.findAll { task -> task.name.startsWith("importCantonalResponsibleOffices_") }
+}
+
+dbSchemas.each { dbSchema ->
+    task "importCantonalLegalBasis_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadCantonalLegalBasis") {
+        group = GROUP
+        description = "Import kantonale Gesetze"
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = cantonalLegalBaseDataSet
+        models = iliModelVorschriften
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalLegalBaseDataSet + ".xtf"))
+    }
+}
+
+// Kantonale Themen
+task downloadCantonalThemes(type: Download) {
+    group = GROUP
+    description = "Download kantonale Themen"
+    src cantonalThemesBaseUrl + cantonalThemesDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true
+}
+
+downloadCantonalThemes.dependsOn {
+    tasks.findAll { task -> task.name.startsWith("importCantonalLegalBasis_") }
+}
+
+dbSchemas.each { dbSchema ->
+    task "importCantonalThemes_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadCantonalThemes") {
+        group = GROUP
+        description = "Import kantonale Themen"
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = cantonalThemesDataSet
+        models = iliModelKonfiguration
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalThemesDataSet + ".xtf"))
+    }
+}
+
+// Konfiguration (Logos, Maplayering etc.)
+task downloadCantonalConfiguration(type: Download) {
+    group = GROUP
+    description = "Download Konfiguration"
+    src cantonalConfigurationBaseUrl + cantonalConfigurationDataSet + ".xtf"
+    dest pathToTempFolder
+    overwrite true      
+}
+
+downloadCantonalConfiguration.dependsOn {
+    tasks.findAll { task -> task.name.startsWith("importCantonalThemes_") }
+}
+
+dbSchemas.each { dbSchema ->
+    task "importCantonalConfiguration_$dbSchema"(type: Ili2pgReplace, dependsOn: "downloadCantonalConfiguration") {
+        group = GROUP
+        description = "Import Konfiguration"
+        database = [dbUriOereb, dbUserOereb, dbPwdOereb]
+        dbschema = dbSchema
+        dataset = cantonalConfigurationDataSet
+        models = iliModelKonfiguration
+        disableValidation = false
+        dataFile = file(Paths.get(pathToTempFolder.toString(), cantonalConfigurationDataSet + ".xtf"))
+    }
+}
+
+// Aggregationstask
+task dbImport() {
+    group = GROUP
+    description = "Aggregation task"
+    dependsOn {
+        tasks.findAll { task -> task.name.startsWith('importCantonalConfiguration_') }
+    }    
+    
+    doLast {
+        println "Data import into db finished."
+    }
+}
